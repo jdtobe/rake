@@ -17,6 +17,51 @@ use crate::geometry::{window_rect, Rect};
 /// Placeholder background (0RGB) until a terminal renderer exists.
 const PLACEHOLDER_COLOR: u32 = 0x001e_1e1e;
 
+/// macOS keeps normal and floating windows below the menubar and silently clamps any frame that
+/// would go above it, which flattens the whole slide into one position. A window above the
+/// menubar level can be placed anywhere, including off the top of the screen.
+#[cfg(target_os = "macos")]
+mod macos {
+    use objc2_app_kit::NSWindow;
+    use tao::platform::macos::WindowExtMacOS;
+    use tao::window::Window;
+
+    /// `NSStatusWindowLevel`.
+    const ABOVE_MENUBAR_LEVEL: isize = 25;
+
+    fn ns_window(window: &Window) -> &NSWindow {
+        // SAFETY: tao returns the window's live `NSWindow`, which outlives the borrow of `window`.
+        unsafe { &*window.ns_window().cast::<NSWindow>() }
+    }
+
+    pub fn raise_above_menubar(window: &Window) {
+        ns_window(window).setLevel(ABOVE_MENUBAR_LEVEL);
+    }
+
+    /// Height in physical pixels of the strip at the top of the window's screen that is not
+    /// usable (the menubar), or 0 if the screen is unknown.
+    pub fn top_inset_px(window: &Window) -> u32 {
+        let ns_window = ns_window(window);
+        let Some(screen) = ns_window.screen() else {
+            return 0;
+        };
+        let (frame, usable) = (screen.frame(), screen.visibleFrame());
+        let points = (frame.origin.y + frame.size.height) - (usable.origin.y + usable.size.height);
+        (points.max(0.0) * ns_window.backingScaleFactor()).round() as u32
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+mod macos {
+    use tao::window::Window;
+
+    pub fn raise_above_menubar(_window: &Window) {}
+
+    pub fn top_inset_px(_window: &Window) -> u32 {
+        0
+    }
+}
+
 pub struct DropDown {
     window: Rc<Window>,
     surface: softbuffer::Surface<Rc<Window>, Rc<Window>>,
@@ -26,6 +71,8 @@ pub struct DropDown {
     /// Where the window rests while shown. Also where it is parked while hidden, so the next
     /// `show` finds the same monitor.
     home: Option<Rect>,
+    /// Top edge of the window when parked fully above its monitor, in physical pixels.
+    hidden_y: i32,
     /// Current top edge of the window, in physical pixels.
     y: i32,
     visible: bool,
@@ -48,6 +95,7 @@ impl DropDown {
             .with_visible(false)
             .build(target)
             .map_err(|e| format!("could not create window: {e}"))?;
+        macos::raise_above_menubar(&window);
         let window = Rc::new(window);
         let context = softbuffer::Context::new(window.clone())
             .map_err(|e| format!("could not create drawing context: {e}"))?;
@@ -60,6 +108,7 @@ impl DropDown {
             height_percent: config.height_percent,
             animation: Duration::from_millis(config.animation_ms.into()),
             home: None,
+            hidden_y: 0,
             y: 0,
             visible: false,
             hiding: false,
@@ -93,15 +142,17 @@ impl DropDown {
         let home = window_rect(
             (position.x, position.y),
             (size.width, size.height),
+            macos::top_inset_px(&self.window),
             self.width_percent,
             self.height_percent,
         );
         self.home = Some(home);
+        self.hidden_y = position.y - home.height as i32;
         self.window
             .set_inner_size(PhysicalSize::new(home.width, home.height));
 
         if !self.visible {
-            self.y = home.y - home.height as i32;
+            self.y = self.hidden_y;
             self.window
                 .set_outer_position(PhysicalPosition::new(home.x, self.y));
             self.visible = true;
@@ -112,7 +163,7 @@ impl DropDown {
             now,
             self.y,
             home.y,
-            home.height,
+            self.travel(home),
             self.animation,
         ));
         self.window.set_focus();
@@ -129,11 +180,16 @@ impl DropDown {
         self.slide = Some(Slide::toward(
             now,
             self.y,
-            home.y - home.height as i32,
-            home.height,
+            self.hidden_y,
+            self.travel(home),
             self.animation,
         ));
         self.tick(now);
+    }
+
+    /// Distance between the hidden and resting positions.
+    fn travel(&self, home: Rect) -> u32 {
+        home.y.abs_diff(self.hidden_y)
     }
 
     /// Advance the running slide, if any. Call on every wake-up while [`is_animating`].

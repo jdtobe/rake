@@ -20,3 +20,14 @@ The window should slide in from the top and back out. We needed a way to run fra
 
 ## Amendment (same day)
 The first version used `ease_out_cubic` with a 200 ms default. In use, it looked like 100 ms or less, because a cubic ease-out has covered about 88% of the distance by half time. We switched to `ease_out_quad` (75% at half time) and a 300 ms default so the slide is visible. `animation_ms` remains the knob for taste.
+
+## Amendment 2: why the slide looked instant, and what we changed
+After the first amendment the slide still looked instant. Measuring (not guessing) showed three separate causes, found by logging the requested and OS-reported window position and every event, with timestamps, from a temporary timer-driven toggle:
+
+1. **macOS clamped the window below the menubar.** A floating-level window cannot be placed above the menubar, so every requested position above y=60 was reported back as y=60 and the whole off-screen part of the slide collapsed into one spot. We now raise the window to `NSStatusWindowLevel` (25) so it can start fully above the screen, and rest it just below the menubar (`top_inset` in `geometry::window_rect`, read from `NSScreen`).
+2. **Timer wake-ups arrived late or not at all.** `ControlFlow::WaitUntil(now + 16ms)` was repeatedly woken late: gaps of 26 to 590 ms, during which the loop slept and the slide did not move. The earlier "hide" slide only looked fine because each `set_outer_position` produced `Moved` events that woke the loop anyway. While a slide runs we now use `ControlFlow::Poll`. Slide positions come from elapsed time, so the spin rate does not matter, and the loop returns to `Wait` (0% CPU) when idle.
+3. **Not a cause, ruled out:** painting (1 to 10 ms), `set_visible` and `set_focus` (under 6 ms), and macOS's window-appear animation (disabling it made no difference).
+
+Known remaining flaw: a 40 to 70 ms hitch in the first ~60 ms of each slide in, while the window is ordered in and resized. The OS-driven alternative, a display-synchronised callback (`CVDisplayLink`), is the next step if this is noticeable.
+
+How to measure again: temporarily add a toggle sent from a thread through the event-loop proxy, and log `Instant::now()`, the requested y, and `window.outer_position()` on every `DropDown::tick`. Check the maximum gap between ticks and that the reported y follows the requested y.

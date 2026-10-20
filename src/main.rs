@@ -6,7 +6,7 @@ use quake_terminal::dropdown::DropDown;
 use quake_terminal::hotkey::{should_toggle, Visibility};
 use quake_terminal::{about_metadata, build_icon};
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tao::event::{Event, StartCause, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 #[cfg(target_os = "macos")]
@@ -19,9 +19,6 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 enum AppEvent {
     Hotkey(GlobalHotKeyEvent),
 }
-
-/// Roughly 60 frames per second.
-const FRAME: Duration = Duration::from_millis(16);
 
 /// Report an unrecoverable startup problem and exit.
 fn fail(message: &str) -> ! {
@@ -136,9 +133,12 @@ fn main() {
             _ => {}
         }
 
-        // Wake up every frame while sliding; otherwise sleep until something happens.
+        // Keep the loop spinning while sliding; otherwise sleep until something happens. A timed
+        // wake-up (`WaitUntil`) is not used because macOS fires timers late for this
+        // background-style app, in the worst case freezing the slide for hundreds of
+        // milliseconds. Slide positions come from elapsed time, so the spin rate does not matter.
         if dropdown.as_ref().is_some_and(DropDown::is_animating) {
-            *control_flow = ControlFlow::WaitUntil(Instant::now() + FRAME);
+            *control_flow = ControlFlow::Poll;
         }
         let _ = (&tray, &hotkey_manager);
     });

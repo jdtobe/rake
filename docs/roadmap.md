@@ -31,7 +31,7 @@ Each milestone is a small, shippable slice built test-first (see [principles](pr
 1. **Menubar icon (done):** `cargo run` shows an icon with About and Quit.
 2. **Hotkey (done):** a global hotkey fires an event in the existing event loop and toggles the visibility state. The default is `Ctrl+\``, and it is user-configurable via the TOML config file ([ADR 5](adr/0005-toml-config-read-at-startup.md)).
 3. **Window (done):** a borderless, always-on-top window appears at the top of the screen, centered, and disappears on the hotkey, filled with a dark placeholder. Size is configurable (`width_percent`, `height_percent`), as is hiding on focus loss (`hide_on_focus_lost`).
-4. **Animation (done, pending manual check):** the window slides in from above the top edge and back out instead of popping. Toggling mid-slide reverses smoothly. Configurable with `animation_ms` ([ADR 6](adr/0006-animation-on-the-event-loop.md)).
+4. **Animation (done, small start-up hitch):** the window slides in from above the top edge and back out instead of popping. Toggling mid-slide reverses smoothly. Configurable with `animation_ms` ([ADR 6](adr/0006-animation-on-the-event-loop.md)).
 5. **Terminal:** shell in a PTY, rendered in the window.
 6. **Config:** user-editable settings with sensible defaults. The hotkey is done via the config file; the rest of the settings and the in-app Settings menu follow.
 7. **Polish:** full-screen Spaces, multi-monitor, focus behavior.

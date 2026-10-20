@@ -11,7 +11,7 @@ A Quake-style drop-down terminal, written in Rust. Press a hotkey and a terminal
 | Menubar icon with **About** and **Quit** | Working (macOS) |
 | Global hotkey | Working |
 | Drop-down window (top of screen, dark placeholder) | Working |
-| Slide animation | Working, needs your check |
+| Slide animation | Working; short hitch at the start of each slide in |
 | Configuration | Hotkey, window size, hide on focus lost, animation time (config file only) |
 | Settings menu in the menubar | Not started |
 | Embedded terminal (shell + rendering) | Not started |

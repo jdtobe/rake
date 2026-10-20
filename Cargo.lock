@@ -1542,6 +1542,7 @@ name = "quake-terminal"
 version = "0.1.0"
 dependencies = [
  "global-hotkey",
+ "objc2-app-kit",
  "serde",
  "softbuffer",
  "tao",
