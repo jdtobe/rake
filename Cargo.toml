@@ -1,0 +1,10 @@
+[package]
+name = "quake-terminal"
+version = "0.1.0"
+edition = "2021"
+description = "A Quake-style drop-down terminal (currently: a menubar icon with About and Quit)"
+publish = false
+
+[dependencies]
+tao = "0.37.1"
+tray-icon = "0.26.1"
