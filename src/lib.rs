@@ -1,6 +1,8 @@
 //! Pure helpers for the menubar app, kept separate from the event loop so they can be unit tested.
 
 pub mod config;
+pub mod dropdown;
+pub mod geometry;
 pub mod hotkey;
 
 use tray_icon::menu::AboutMetadata;

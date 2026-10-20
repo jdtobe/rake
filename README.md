@@ -9,9 +9,10 @@ A Quake-style drop-down terminal, written in Rust. Press a hotkey and a terminal
 | Capability | State |
 |---|---|
 | Menubar icon with **About** and **Quit** | Working (macOS) |
-| Global hotkey | Working, but only logs `Shown`/`Hidden` to stderr |
-| Configuration | Hotkey only |
-| Drop-down window with slide animation | Not started |
+| Global hotkey | Working |
+| Drop-down window (full width, top of screen, dark placeholder) | Working, appears and disappears instantly (needs your check) |
+| Slide animation | Not started |
+| Configuration | Hotkey and window height |
 | Embedded terminal (shell + rendering) | Not started |
 | Linux / Windows | Not tested |
 
@@ -32,6 +33,9 @@ Optional. Create `~/.config/quake-terminal/config.toml`; a missing file means de
 ```toml
 # Global key that shows/hides the terminal. Default: "Ctrl+`"
 hotkey = "Alt+Space"
+
+# Window height as a percentage of the screen, 10 to 100. Default: 40
+height_percent = 40
 ```
 
 Hotkey strings use the [`global-hotkey`](https://docs.rs/global-hotkey) format, such as `Ctrl+Shift+K`, `Cmd+Backquote` or `F12`. Note that a global hotkey is captured system-wide, so the default `Ctrl+\`` will also stop working inside other apps that use it, such as editors.

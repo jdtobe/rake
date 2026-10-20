@@ -2,10 +2,11 @@
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
 use quake_terminal::config::{self, Config};
+use quake_terminal::dropdown::DropDown;
 use quake_terminal::hotkey::{should_toggle, Visibility};
 use quake_terminal::{about_metadata, build_icon};
 use std::path::Path;
-use tao::event::{Event, StartCause};
+use tao::event::{Event, StartCause, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 #[cfg(target_os = "macos")]
 use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
@@ -56,8 +57,9 @@ fn main() {
     let mut tray: Option<TrayIcon> = None;
     let mut hotkey_manager: Option<GlobalHotKeyManager> = None;
     let mut visibility = Visibility::Hidden;
+    let mut dropdown: Option<DropDown> = None;
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, target, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
@@ -80,12 +82,34 @@ fn main() {
                     ));
                 }
                 hotkey_manager = Some(manager);
+
+                dropdown =
+                    Some(DropDown::new(target, config.height_percent).unwrap_or_else(|e| fail(&e)));
             }
             Event::UserEvent(AppEvent::Hotkey(e))
                 if e.id() == hotkey.id() && should_toggle(e.state()) =>
             {
                 visibility = visibility.toggled();
-                eprintln!("{visibility:?}");
+                if let Some(dropdown) = &dropdown {
+                    match visibility {
+                        Visibility::Shown => dropdown.show(),
+                        Visibility::Hidden => dropdown.hide(),
+                    }
+                }
+            }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
+                if let Some(dropdown) = dropdown.as_ref().filter(|d| d.window_id() == window_id) {
+                    dropdown.request_redraw();
+                }
+            }
+            Event::RedrawRequested(window_id) => {
+                if let Some(dropdown) = dropdown.as_mut().filter(|d| d.window_id() == window_id) {
+                    dropdown.paint();
+                }
             }
             _ => {}
         }
