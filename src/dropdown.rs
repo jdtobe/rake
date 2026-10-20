@@ -8,6 +8,7 @@ use tao::dpi::{PhysicalPosition, PhysicalSize};
 use tao::event_loop::EventLoopWindowTarget;
 use tao::window::{Window, WindowBuilder, WindowId};
 
+use crate::config::Config;
 use crate::geometry::window_rect;
 
 /// Placeholder background (0RGB) until a terminal renderer exists.
@@ -16,6 +17,7 @@ const PLACEHOLDER_COLOR: u32 = 0x001e_1e1e;
 pub struct DropDown {
     window: Rc<Window>,
     surface: softbuffer::Surface<Rc<Window>, Rc<Window>>,
+    width_percent: u8,
     height_percent: u8,
 }
 
@@ -23,7 +25,7 @@ impl DropDown {
     /// Create the window hidden.
     pub fn new<T: 'static>(
         target: &EventLoopWindowTarget<T>,
-        height_percent: u8,
+        config: &Config,
     ) -> Result<Self, String> {
         let window = WindowBuilder::new()
             .with_title(env!("CARGO_PKG_NAME"))
@@ -41,7 +43,8 @@ impl DropDown {
         Ok(DropDown {
             window,
             surface,
-            height_percent,
+            width_percent: config.width_percent,
+            height_percent: config.height_percent,
         })
     }
 
@@ -61,6 +64,7 @@ impl DropDown {
             let rect = window_rect(
                 (position.x, position.y),
                 (size.width, size.height),
+                self.width_percent,
                 self.height_percent,
             );
             self.window

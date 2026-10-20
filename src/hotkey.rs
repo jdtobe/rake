@@ -18,6 +18,15 @@ impl Visibility {
             Visibility::Shown => Visibility::Hidden,
         }
     }
+
+    /// What to do when the window gains or loses focus.
+    pub fn after_focus_change(self, hide_on_focus_lost: bool, focused: bool) -> Self {
+        if hide_on_focus_lost && !focused {
+            Visibility::Hidden
+        } else {
+            self
+        }
+    }
 }
 
 pub fn parse_hotkey(text: &str) -> Result<HotKey, String> {
@@ -62,6 +71,40 @@ mod tests {
     fn visibility_toggles_both_ways() {
         assert_eq!(Visibility::Hidden.toggled(), Visibility::Shown);
         assert_eq!(Visibility::Shown.toggled(), Visibility::Hidden);
+    }
+
+    #[test]
+    fn losing_focus_hides_only_when_enabled() {
+        assert_eq!(
+            Visibility::Shown.after_focus_change(true, false),
+            Visibility::Hidden
+        );
+        assert_eq!(
+            Visibility::Shown.after_focus_change(false, false),
+            Visibility::Shown
+        );
+    }
+
+    #[test]
+    fn gaining_focus_never_changes_visibility() {
+        for hide in [true, false] {
+            assert_eq!(
+                Visibility::Shown.after_focus_change(hide, true),
+                Visibility::Shown
+            );
+            assert_eq!(
+                Visibility::Hidden.after_focus_change(hide, true),
+                Visibility::Hidden
+            );
+        }
+    }
+
+    #[test]
+    fn losing_focus_while_hidden_stays_hidden() {
+        assert_eq!(
+            Visibility::Hidden.after_focus_change(true, false),
+            Visibility::Hidden
+        );
     }
 
     #[test]

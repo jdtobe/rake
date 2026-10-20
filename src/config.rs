@@ -15,15 +15,22 @@ pub struct Config {
     pub hotkey: String,
     /// Window height as a percentage of the monitor's height.
     pub height_percent: u8,
+    /// Window width as a percentage of the monitor's width. The window is centered.
+    pub width_percent: u8,
+    /// Hide the window when it loses keyboard focus.
+    pub hide_on_focus_lost: bool,
 }
 
 pub const HEIGHT_PERCENT_RANGE: std::ops::RangeInclusive<u8> = 10..=100;
+pub const WIDTH_PERCENT_RANGE: std::ops::RangeInclusive<u8> = 10..=100;
 
 impl Default for Config {
     fn default() -> Self {
         Config {
             hotkey: DEFAULT_HOTKEY.to_string(),
             height_percent: 40,
+            width_percent: 100,
+            hide_on_focus_lost: false,
         }
     }
 }
@@ -33,13 +40,21 @@ impl Config {
     pub fn from_toml_str(text: &str) -> Result<Config, String> {
         let config: Config = toml::from_str(text).map_err(|e| e.to_string())?;
         config.hotkey()?;
-        if !HEIGHT_PERCENT_RANGE.contains(&config.height_percent) {
-            return Err(format!(
-                "height_percent must be between {} and {}, got {}",
-                HEIGHT_PERCENT_RANGE.start(),
-                HEIGHT_PERCENT_RANGE.end(),
-                config.height_percent
-            ));
+        for (name, value, range) in [
+            (
+                "height_percent",
+                config.height_percent,
+                HEIGHT_PERCENT_RANGE,
+            ),
+            ("width_percent", config.width_percent, WIDTH_PERCENT_RANGE),
+        ] {
+            if !range.contains(&value) {
+                return Err(format!(
+                    "{name} must be between {} and {}, got {value}",
+                    range.start(),
+                    range.end()
+                ));
+            }
         }
         Ok(config)
     }
@@ -114,6 +129,36 @@ mod tests {
         }
         assert!(Config::from_toml_str("height_percent = 10").is_ok());
         assert!(Config::from_toml_str("height_percent = 100").is_ok());
+    }
+
+    #[test]
+    fn width_defaults_to_full_and_can_be_overridden() {
+        assert_eq!(Config::default().width_percent, 100);
+        let cfg = Config::from_toml_str("width_percent = 70").unwrap();
+        assert_eq!(cfg.width_percent, 70);
+    }
+
+    #[test]
+    fn width_outside_10_to_100_is_rejected() {
+        for bad in ["9", "101", "300", "-5", "0"] {
+            let err = Config::from_toml_str(&format!("width_percent = {bad}")).unwrap_err();
+            assert!(err.contains("width_percent"), "{bad}: error was: {err}");
+        }
+        assert!(Config::from_toml_str("width_percent = 10").is_ok());
+        assert!(Config::from_toml_str("width_percent = 100").is_ok());
+    }
+
+    #[test]
+    fn hide_on_focus_lost_defaults_off_and_can_be_enabled() {
+        assert!(!Config::default().hide_on_focus_lost);
+        let cfg = Config::from_toml_str("hide_on_focus_lost = true").unwrap();
+        assert!(cfg.hide_on_focus_lost);
+    }
+
+    #[test]
+    fn hide_on_focus_lost_must_be_a_boolean() {
+        let err = Config::from_toml_str("hide_on_focus_lost = \"yes\"").unwrap_err();
+        assert!(err.contains("hide_on_focus_lost"), "error was: {err}");
     }
 
     #[test]

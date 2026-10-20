@@ -83,8 +83,7 @@ fn main() {
                 }
                 hotkey_manager = Some(manager);
 
-                dropdown =
-                    Some(DropDown::new(target, config.height_percent).unwrap_or_else(|e| fail(&e)));
+                dropdown = Some(DropDown::new(target, &config).unwrap_or_else(|e| fail(&e)));
             }
             Event::UserEvent(AppEvent::Hotkey(e))
                 if e.id() == hotkey.id() && should_toggle(e.state()) =>
@@ -104,6 +103,19 @@ fn main() {
             } => {
                 if let Some(dropdown) = dropdown.as_ref().filter(|d| d.window_id() == window_id) {
                     dropdown.request_redraw();
+                }
+            }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::Focused(focused),
+                ..
+            } => {
+                if let Some(dropdown) = dropdown.as_ref().filter(|d| d.window_id() == window_id) {
+                    let next = visibility.after_focus_change(config.hide_on_focus_lost, focused);
+                    if next != visibility {
+                        visibility = next;
+                        dropdown.hide();
+                    }
                 }
             }
             Event::RedrawRequested(window_id) => {
