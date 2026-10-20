@@ -28,7 +28,7 @@ A fast, native, always-available terminal that drops down from the top of the sc
 Each milestone is a small, shippable slice built test-first (see [principles](principles.md)).
 
 1. **Menubar icon (done):** `cargo run` shows an icon with About and Quit.
-2. **Hotkey:** a global hotkey fires an event in the existing event loop. It can be proven by logging or toggling a menu state.
+2. **Hotkey (done):** a global hotkey fires an event in the existing event loop and toggles a visibility state, logged to stderr. The key is hardcoded to `Ctrl+\``; making it configurable is next.
 3. **Window:** a borderless window appears and disappears on the hotkey, with no terminal inside yet.
 4. **Animation:** the window slides from the top edge instead of popping.
 5. **Terminal:** shell in a PTY, rendered in the window.

@@ -1,5 +1,7 @@
 //! Pure helpers for the menubar app, kept separate from the event loop so they can be unit tested.
 
+pub mod hotkey;
+
 use tray_icon::menu::AboutMetadata;
 use tray_icon::Icon;
 

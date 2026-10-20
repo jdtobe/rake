@@ -3,9 +3,12 @@
 ## Current architecture
 
 ```
-src/main.rs   Event loop and wiring (thin, not unit tested)
-src/lib.rs    Pure, testable helpers (icon pixels, About metadata)
+src/main.rs     Event loop and wiring (thin, not unit tested)
+src/lib.rs      Pure, testable helpers (icon pixels, About metadata)
+src/hotkey.rs   Hotkey parsing and the show/hide toggle state
 ```
+
+The global hotkey handler runs on another thread. It forwards each event into the loop as a `tao` user event (`AppEvent::Hotkey`), so all state changes happen on the main thread.
 
 `main.rs` builds a [`tao`](https://crates.io/crates/tao) event loop, sets the macOS activation policy to `Accessory` (no Dock icon), and creates a [`tray-icon`](https://crates.io/crates/tray-icon) with a menu of `About` (native panel via predefined menu item) and `Quit`. The tray icon is created on `StartCause::Init` and kept alive for the lifetime of the loop, as macOS requires.
 

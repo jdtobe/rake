@@ -9,7 +9,7 @@ A Quake-style drop-down terminal, written in Rust. Press a hotkey and a terminal
 | Capability | State |
 |---|---|
 | Menubar icon with **About** and **Quit** | Working (macOS) |
-| Global hotkey | Not started |
+| Global hotkey (`Ctrl+`` ) | Working, but fixed and only logs `Shown`/`Hidden` to stderr |
 | Drop-down window with slide animation | Not started |
 | Embedded terminal (shell + rendering) | Not started |
 | Configuration | Not started |
