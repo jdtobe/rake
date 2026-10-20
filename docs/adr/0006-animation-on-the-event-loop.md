@@ -31,3 +31,6 @@ After the first amendment the slide still looked instant. Measuring (not guessin
 Known remaining flaw: a 40 to 70 ms hitch in the first ~60 ms of each slide in, while the window is ordered in and resized. The OS-driven alternative, a display-synchronised callback (`CVDisplayLink`), is the next step if this is noticeable.
 
 How to measure again: temporarily add a toggle sent from a thread through the event-loop proxy, and log `Instant::now()`, the requested y, and `window.outer_position()` on every `DropDown::tick`. Check the maximum gap between ticks and that the reported y follows the requested y.
+
+## Amendment 3: slide under the menubar, not over it
+Amendment 2 raised the window to `NSStatusWindowLevel` (25). That removed the clamp, but status-level windows draw in front of the menubar, so the panel visibly crossed over it. Measured levels (requested vs reported y during a slide): 23 is clamped to y=60 like the floating level; 24 (`NSMainMenuWindowLevel`) follows the requested y exactly; 25 follows it too. At 24 the window list (`CGWindowListCopyWindowInfo`) puts the menubar window in front of the panel on the panel's display. We now use level 24. Only the window list order was checked programmatically; the on-screen look is a manual check.

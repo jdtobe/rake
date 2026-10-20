@@ -18,24 +18,26 @@ use crate::geometry::{window_rect, Rect};
 const PLACEHOLDER_COLOR: u32 = 0x001e_1e1e;
 
 /// macOS keeps normal and floating windows below the menubar and silently clamps any frame that
-/// would go above it, which flattens the whole slide into one position. A window above the
-/// menubar level can be placed anywhere, including off the top of the screen.
+/// would go above it, which flattens the whole slide into one position. A window at the menubar's
+/// own level is not clamped, and the menubar is drawn in front of it, so the panel slides out
+/// from under the menubar rather than over it.
 #[cfg(target_os = "macos")]
 mod macos {
     use objc2_app_kit::NSWindow;
     use tao::platform::macos::WindowExtMacOS;
     use tao::window::Window;
 
-    /// `NSStatusWindowLevel`.
-    const ABOVE_MENUBAR_LEVEL: isize = 25;
+    /// `NSMainMenuWindowLevel`. One level lower (23) is clamped; one higher (25, status) draws
+    /// over the menubar.
+    const MENUBAR_LEVEL: isize = 24;
 
     fn ns_window(window: &Window) -> &NSWindow {
         // SAFETY: tao returns the window's live `NSWindow`, which outlives the borrow of `window`.
         unsafe { &*window.ns_window().cast::<NSWindow>() }
     }
 
-    pub fn raise_above_menubar(window: &Window) {
-        ns_window(window).setLevel(ABOVE_MENUBAR_LEVEL);
+    pub fn raise_to_menubar_level(window: &Window) {
+        ns_window(window).setLevel(MENUBAR_LEVEL);
     }
 
     /// Height in physical pixels of the strip at the top of the window's screen that is not
@@ -55,7 +57,7 @@ mod macos {
 mod macos {
     use tao::window::Window;
 
-    pub fn raise_above_menubar(_window: &Window) {}
+    pub fn raise_to_menubar_level(_window: &Window) {}
 
     pub fn top_inset_px(_window: &Window) -> u32 {
         0
@@ -95,7 +97,7 @@ impl DropDown {
             .with_visible(false)
             .build(target)
             .map_err(|e| format!("could not create window: {e}"))?;
-        macos::raise_above_menubar(&window);
+        macos::raise_to_menubar_level(&window);
         let window = Rc::new(window);
         let context = softbuffer::Context::new(window.clone())
             .map_err(|e| format!("could not create drawing context: {e}"))?;
