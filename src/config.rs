@@ -35,7 +35,7 @@ impl Default for Config {
             height_percent: 40,
             width_percent: 100,
             hide_on_focus_lost: false,
-            animation_ms: 200,
+            animation_ms: 300,
         }
     }
 }
@@ -173,8 +173,8 @@ mod tests {
     }
 
     #[test]
-    fn animation_defaults_to_200ms_and_can_be_overridden_or_disabled() {
-        assert_eq!(Config::default().animation_ms, 200);
+    fn animation_defaults_to_300ms_and_can_be_overridden_or_disabled() {
+        assert_eq!(Config::default().animation_ms, 300);
         assert_eq!(
             Config::from_toml_str("animation_ms = 350")
                 .unwrap()

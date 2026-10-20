@@ -3,8 +3,8 @@
 use std::time::{Duration, Instant};
 
 /// Fast start, gentle stop. Input and output are both in `0.0..=1.0`; input is clamped.
-pub fn ease_out_cubic(t: f64) -> f64 {
-    1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
+pub fn ease_out_quad(t: f64) -> f64 {
+    1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(2)
 }
 
 /// A vertical move of the window from one y coordinate to another.
@@ -59,7 +59,7 @@ impl Slide {
 
     pub fn y_at(&self, now: Instant) -> i32 {
         let distance = f64::from(self.to) - f64::from(self.from);
-        self.from + (distance * ease_out_cubic(self.progress(now))).round() as i32
+        self.from + (distance * ease_out_quad(self.progress(now))).round() as i32
     }
 
     pub fn is_done(&self, now: Instant) -> bool {
@@ -77,24 +77,31 @@ mod tests {
 
     #[test]
     fn easing_hits_the_endpoints() {
-        assert_eq!(ease_out_cubic(0.0), 0.0);
-        assert_eq!(ease_out_cubic(1.0), 1.0);
+        assert_eq!(ease_out_quad(0.0), 0.0);
+        assert_eq!(ease_out_quad(1.0), 1.0);
+    }
+
+    #[test]
+    fn easing_is_gentle_enough_to_see() {
+        // A steeper curve (cubic) is 88% done at half time, which reads as a much shorter slide.
+        assert!((ease_out_quad(0.5) - 0.75).abs() < 1e-9);
+        assert!((ease_out_quad(0.25) - 0.4375).abs() < 1e-9);
     }
 
     #[test]
     fn easing_clamps_out_of_range_input() {
-        assert_eq!(ease_out_cubic(-3.0), 0.0);
-        assert_eq!(ease_out_cubic(7.0), 1.0);
+        assert_eq!(ease_out_quad(-3.0), 0.0);
+        assert_eq!(ease_out_quad(7.0), 1.0);
     }
 
     #[test]
     fn easing_only_increases_and_starts_fast() {
         let samples: Vec<f64> = (0..=100)
-            .map(|i| ease_out_cubic(f64::from(i) / 100.0))
+            .map(|i| ease_out_quad(f64::from(i) / 100.0))
             .collect();
         assert!(samples.windows(2).all(|w| w[0] <= w[1]));
         // Ease-out: more than halfway there after half the time.
-        assert!(ease_out_cubic(0.5) > 0.5);
+        assert!(ease_out_quad(0.5) > 0.5);
     }
 
     #[test]

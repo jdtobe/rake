@@ -44,8 +44,8 @@ width_percent = 100
 # Hide the window when it loses keyboard focus. Default: false
 hide_on_focus_lost = false
 
-# Slide in/out time in milliseconds, 0 to 2000. 0 turns the animation off. Default: 200
-animation_ms = 200
+# Slide in/out time in milliseconds, 0 to 2000. 0 turns the animation off. Default: 300
+animation_ms = 300
 ```
 
 Hotkey strings use the [`global-hotkey`](https://docs.rs/global-hotkey) format, such as `Ctrl+Shift+K`, `Cmd+Backquote` or `F12`. Note that a global hotkey is captured system-wide, so the default `Ctrl+\`` will also stop working inside other apps that use it, such as editors.
