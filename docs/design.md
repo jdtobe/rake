@@ -8,10 +8,13 @@ src/lib.rs      Pure, testable helpers (icon pixels, About metadata)
 src/hotkey.rs   Hotkey parsing and the show/hide toggle state
 src/config.rs   TOML config loading and validation
 src/geometry.rs Where the drop-down window goes (pure, tested)
+src/animation.rs Easing and slide maths (pure, tested)
 src/dropdown.rs The window itself: tao + softbuffer glue (checked by hand)
 ```
 
 The global hotkey handler runs on another thread. It forwards each event into the loop as a `tao` user event (`AppEvent::Hotkey`), so all state changes happen on the main thread.
+
+While a slide runs, the loop wakes about every 16 ms; otherwise it sleeps ([ADR 6](adr/0006-animation-on-the-event-loop.md)).
 
 `main.rs` builds a [`tao`](https://crates.io/crates/tao) event loop, sets the macOS activation policy to `Accessory` (no Dock icon), and creates a [`tray-icon`](https://crates.io/crates/tray-icon) with a menu of `About` (native panel via predefined menu item) and `Quit`. The tray icon is created on `StartCause::Init` and kept alive for the lifetime of the loop, as macOS requires.
 

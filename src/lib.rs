@@ -1,5 +1,6 @@
 //! Pure helpers for the menubar app, kept separate from the event loop so they can be unit tested.
 
+pub mod animation;
 pub mod config;
 pub mod dropdown;
 pub mod geometry;

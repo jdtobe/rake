@@ -6,6 +6,7 @@ use quake_terminal::dropdown::DropDown;
 use quake_terminal::hotkey::{should_toggle, Visibility};
 use quake_terminal::{about_metadata, build_icon};
 use std::path::Path;
+use std::time::{Duration, Instant};
 use tao::event::{Event, StartCause, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 #[cfg(target_os = "macos")]
@@ -18,6 +19,9 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 enum AppEvent {
     Hotkey(GlobalHotKeyEvent),
 }
+
+/// Roughly 60 frames per second.
+const FRAME: Duration = Duration::from_millis(16);
 
 /// Report an unrecoverable startup problem and exit.
 fn fail(message: &str) -> ! {
@@ -89,10 +93,10 @@ fn main() {
                 if e.id() == hotkey.id() && should_toggle(e.state()) =>
             {
                 visibility = visibility.toggled();
-                if let Some(dropdown) = &dropdown {
+                if let Some(dropdown) = &mut dropdown {
                     match visibility {
-                        Visibility::Shown => dropdown.show(),
-                        Visibility::Hidden => dropdown.hide(),
+                        Visibility::Shown => dropdown.show(Instant::now()),
+                        Visibility::Hidden => dropdown.hide(Instant::now()),
                     }
                 }
             }
@@ -110,11 +114,11 @@ fn main() {
                 event: WindowEvent::Focused(focused),
                 ..
             } => {
-                if let Some(dropdown) = dropdown.as_ref().filter(|d| d.window_id() == window_id) {
+                if let Some(dropdown) = dropdown.as_mut().filter(|d| d.window_id() == window_id) {
                     let next = visibility.after_focus_change(config.hide_on_focus_lost, focused);
                     if next != visibility {
                         visibility = next;
-                        dropdown.hide();
+                        dropdown.hide(Instant::now());
                     }
                 }
             }
@@ -123,7 +127,18 @@ fn main() {
                     dropdown.paint();
                 }
             }
+            // Runs after every batch of events, including the timed wake-ups requested below.
+            Event::MainEventsCleared => {
+                if let Some(dropdown) = &mut dropdown {
+                    dropdown.tick(Instant::now());
+                }
+            }
             _ => {}
+        }
+
+        // Wake up every frame while sliding; otherwise sleep until something happens.
+        if dropdown.as_ref().is_some_and(DropDown::is_animating) {
+            *control_flow = ControlFlow::WaitUntil(Instant::now() + FRAME);
         }
         let _ = (&tray, &hotkey_manager);
     });

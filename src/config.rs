@@ -19,7 +19,11 @@ pub struct Config {
     pub width_percent: u8,
     /// Hide the window when it loses keyboard focus.
     pub hide_on_focus_lost: bool,
+    /// How long the slide in/out takes, in milliseconds. 0 turns the animation off.
+    pub animation_ms: u32,
 }
+
+pub const ANIMATION_MS_MAX: u32 = 2000;
 
 pub const HEIGHT_PERCENT_RANGE: std::ops::RangeInclusive<u8> = 10..=100;
 pub const WIDTH_PERCENT_RANGE: std::ops::RangeInclusive<u8> = 10..=100;
@@ -31,6 +35,7 @@ impl Default for Config {
             height_percent: 40,
             width_percent: 100,
             hide_on_focus_lost: false,
+            animation_ms: 200,
         }
     }
 }
@@ -55,6 +60,12 @@ impl Config {
                     range.end()
                 ));
             }
+        }
+        if config.animation_ms > ANIMATION_MS_MAX {
+            return Err(format!(
+                "animation_ms must be between 0 and {ANIMATION_MS_MAX}, got {}",
+                config.animation_ms
+            ));
         }
         Ok(config)
     }
@@ -159,6 +170,32 @@ mod tests {
     fn hide_on_focus_lost_must_be_a_boolean() {
         let err = Config::from_toml_str("hide_on_focus_lost = \"yes\"").unwrap_err();
         assert!(err.contains("hide_on_focus_lost"), "error was: {err}");
+    }
+
+    #[test]
+    fn animation_defaults_to_200ms_and_can_be_overridden_or_disabled() {
+        assert_eq!(Config::default().animation_ms, 200);
+        assert_eq!(
+            Config::from_toml_str("animation_ms = 350")
+                .unwrap()
+                .animation_ms,
+            350
+        );
+        assert_eq!(
+            Config::from_toml_str("animation_ms = 0")
+                .unwrap()
+                .animation_ms,
+            0
+        );
+    }
+
+    #[test]
+    fn animation_longer_than_2_seconds_or_negative_is_rejected() {
+        assert!(Config::from_toml_str("animation_ms = 2000").is_ok());
+        for bad in ["2001", "-1"] {
+            let err = Config::from_toml_str(&format!("animation_ms = {bad}")).unwrap_err();
+            assert!(err.contains("animation_ms"), "{bad}: error was: {err}");
+        }
     }
 
     #[test]

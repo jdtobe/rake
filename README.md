@@ -10,9 +10,9 @@ A Quake-style drop-down terminal, written in Rust. Press a hotkey and a terminal
 |---|---|
 | Menubar icon with **About** and **Quit** | Working (macOS) |
 | Global hotkey | Working |
-| Drop-down window (top of screen, dark placeholder) | Working, appears and disappears instantly |
-| Slide animation | Not started |
-| Configuration | Hotkey, window size, hide on focus lost (config file only) |
+| Drop-down window (top of screen, dark placeholder) | Working |
+| Slide animation | Working, needs your check |
+| Configuration | Hotkey, window size, hide on focus lost, animation time (config file only) |
 | Settings menu in the menubar | Not started |
 | Embedded terminal (shell + rendering) | Not started |
 | Linux / Windows | Not tested |
@@ -43,6 +43,9 @@ width_percent = 100
 
 # Hide the window when it loses keyboard focus. Default: false
 hide_on_focus_lost = false
+
+# Slide in/out time in milliseconds, 0 to 2000. 0 turns the animation off. Default: 200
+animation_ms = 200
 ```
 
 Hotkey strings use the [`global-hotkey`](https://docs.rs/global-hotkey) format, such as `Ctrl+Shift+K`, `Cmd+Backquote` or `F12`. Note that a global hotkey is captured system-wide, so the default `Ctrl+\`` will also stop working inside other apps that use it, such as editors.
