@@ -1,8 +1,10 @@
 //! Menubar app: a tray icon with About and Quit, plus a global show/hide hotkey.
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
-use quake_terminal::hotkey::{parse_hotkey, should_toggle, Visibility, DEFAULT_HOTKEY};
+use quake_terminal::config::{self, Config};
+use quake_terminal::hotkey::{should_toggle, Visibility};
 use quake_terminal::{about_metadata, build_icon};
+use std::path::Path;
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 #[cfg(target_os = "macos")]
@@ -16,6 +18,12 @@ enum AppEvent {
     Hotkey(GlobalHotKeyEvent),
 }
 
+/// Report an unrecoverable startup problem and exit.
+fn fail(message: &str) -> ! {
+    eprintln!("{message}");
+    std::process::exit(1);
+}
+
 fn main() {
     let mut event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
 
@@ -23,10 +31,12 @@ fn main() {
     #[cfg(target_os = "macos")]
     event_loop.set_activation_policy(ActivationPolicy::Accessory);
 
-    let hotkey = parse_hotkey(DEFAULT_HOTKEY).unwrap_or_else(|e| {
-        eprintln!("{e}");
-        std::process::exit(1);
-    });
+    let config = match std::env::var_os("HOME") {
+        Some(home) => config::load(&config::config_path(Path::new(&home))),
+        None => Ok(Config::default()),
+    }
+    .unwrap_or_else(|e| fail(&e));
+    let hotkey = config.hotkey().unwrap_or_else(|e| fail(&e));
 
     let proxy = event_loop.create_proxy();
     GlobalHotKeyEvent::set_event_handler(Some(move |event| {
@@ -64,8 +74,10 @@ fn main() {
 
                 let manager = GlobalHotKeyManager::new().expect("failed to start hotkey manager");
                 if let Err(e) = manager.register(hotkey) {
-                    eprintln!("could not register hotkey {DEFAULT_HOTKEY:?}: {e}");
-                    std::process::exit(1);
+                    fail(&format!(
+                        "could not register hotkey {:?}: {e}",
+                        config.hotkey
+                    ));
                 }
                 hotkey_manager = Some(manager);
             }

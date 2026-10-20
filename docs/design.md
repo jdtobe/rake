@@ -6,6 +6,7 @@
 src/main.rs     Event loop and wiring (thin, not unit tested)
 src/lib.rs      Pure, testable helpers (icon pixels, About metadata)
 src/hotkey.rs   Hotkey parsing and the show/hide toggle state
+src/config.rs   TOML config loading and validation
 ```
 
 The global hotkey handler runs on another thread. It forwards each event into the loop as a `tao` user event (`AppEvent::Hotkey`), so all state changes happen on the main thread.

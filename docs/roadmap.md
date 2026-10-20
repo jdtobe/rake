@@ -28,7 +28,7 @@ A fast, native, always-available terminal that drops down from the top of the sc
 Each milestone is a small, shippable slice built test-first (see [principles](principles.md)).
 
 1. **Menubar icon (done):** `cargo run` shows an icon with About and Quit.
-2. **Hotkey (done):** a global hotkey fires an event in the existing event loop and toggles a visibility state, logged to stderr. The key is hardcoded to `Ctrl+\``; making it configurable is next.
+2. **Hotkey (done):** a global hotkey fires an event in the existing event loop and toggles a visibility state, logged to stderr. The default is `Ctrl+\``, and it is user-configurable via the TOML config file ([ADR 5](adr/0005-toml-config-read-at-startup.md)).
 3. **Window:** a borderless window appears and disappears on the hotkey, with no terminal inside yet.
 4. **Animation:** the window slides from the top edge instead of popping.
 5. **Terminal:** shell in a PTY, rendered in the window.
