@@ -1,6 +1,6 @@
-//! The drop-down window. This is OS glue around `tao` and `softbuffer`, so it is verified by
-//! hand rather than unit tested; the placement maths lives in [`crate::geometry`] and the
-//! slide maths in [`crate::animation`].
+//! The drop-down window. This is OS glue around `tao` and the terminal webview, so it is verified
+//! by hand rather than unit tested; placement maths lives in [`crate::geometry`] and slide maths
+//! in [`crate::animation`].
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -22,7 +22,8 @@ use crate::APP_NAME;
 /// from under the menubar rather than over it.
 #[cfg(target_os = "macos")]
 mod macos {
-    use objc2_app_kit::NSWindow;
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSWindow};
     use tao::platform::macos::WindowExtMacOS;
     use tao::window::Window;
 
@@ -36,7 +37,16 @@ mod macos {
     }
 
     pub fn raise_to_menubar_level(window: &Window) {
-        ns_window(window).setLevel(MENUBAR_LEVEL);
+        let window = ns_window(window);
+        window.setLevel(MENUBAR_LEVEL);
+        window.setHidesOnDeactivate(false);
+    }
+
+    pub fn focus(window: &Window) {
+        let marker = MainThreadMarker::new().expect("GUI work runs on the main thread");
+        NSApplication::sharedApplication(marker).activate();
+        ns_window(window).makeKeyAndOrderFront(None);
+        window.set_focus();
     }
 
     /// Height in physical pixels of the strip at the top of the window's screen that is not
@@ -57,6 +67,10 @@ mod macos {
     use tao::window::Window;
 
     pub fn raise_to_menubar_level(_window: &Window) {}
+
+    pub fn focus(window: &Window) {
+        window.set_focus();
+    }
 
     pub fn top_inset_px(_window: &Window) -> u32 {
         0
@@ -168,7 +182,7 @@ impl DropDown {
             self.travel(home),
             self.animation,
         ));
-        self.window.set_focus();
+        macos::focus(&self.window);
         let _ = self.terminal.focus();
         self.window.request_redraw();
         self.tick(now);

@@ -4,17 +4,18 @@ Rake is a macOS-first Quake-style drop-down terminal written in Rust. Press a ho
 
 ## Status
 
-**Early. The drop-down shell exists; terminal emulation is the next milestone.**
+**Early. A first single-session terminal exists; interactive macOS acceptance testing is still in progress.**
 
 | Capability | State |
 |---|---|
 | Menubar icon with **About** and **Quit** | Working (macOS) |
 | Global hotkey | Working |
-| Drop-down window (top of screen, dark placeholder) | Working |
+| Drop-down window at the top of the screen | Working |
 | Slide animation | Working; short hitch at the start of each slide in |
 | Configuration | Hotkey, window size, hide on focus lost, animation time (config file only) |
 | Settings menu in the menubar | Not started |
-| Embedded terminal (shell + rendering) | Not started |
+| Embedded terminal (shell + rendering) | Working as one persistent login-shell session; final keyboard/clipboard checks pending |
+| Tabs and profiles | Planned after the single-session terminal is validated |
 | Linux / Windows | Not tested |
 
 Developed and tested on macOS only.
@@ -25,7 +26,7 @@ Developed and tested on macOS only.
 cargo run
 ```
 
-An icon appears in the menubar (no Dock icon). Click it for **About** (native panel) and **Quit**. `Ctrl+C` in the terminal also stops it.
+Rake opens and focuses a terminal backed by your default login shell. The shell remains alive when the hotkey hides the window. An icon also appears in the menubar (no Dock icon); click it for **About** and **Quit**.
 
 ## Configure
 

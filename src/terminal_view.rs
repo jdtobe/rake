@@ -19,6 +19,10 @@ pub fn terminal_html() -> String {
         .replace("/*__RAKE_JS__*/", RAKE_JS)
 }
 
+fn navigation_allowed(url: &str) -> bool {
+    url == "about:blank" || url.starts_with("data:text/html")
+}
+
 struct ScriptDelivery {
     delivery: TerminalDelivery,
     script: String,
@@ -67,7 +71,7 @@ impl TerminalView {
         let webview = WebViewBuilder::new()
             .with_html(terminal_html())
             .with_ipc_handler(move |request| ipc(request.body().clone()))
-            .with_navigation_handler(|_| false)
+            .with_navigation_handler(|url| navigation_allowed(&url))
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
             .build(window)
             .map_err(|e| format!("could not create terminal webview: {e}"))?;
@@ -190,5 +194,18 @@ mod tests {
             scripts[1],
             r#"window.rake.end("Process ended with status 0.");"#
         );
+    }
+
+    #[test]
+    fn navigation_allows_embedded_document_but_denies_external_urls() {
+        assert!(navigation_allowed("about:blank"));
+        assert!(navigation_allowed("data:text/html;charset=utf-8,terminal"));
+        for url in [
+            "https://example.com",
+            "http://example.com",
+            "file:///tmp/page.html",
+        ] {
+            assert!(!navigation_allowed(url), "allowed {url}");
+        }
     }
 }
