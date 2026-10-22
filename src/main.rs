@@ -84,7 +84,8 @@ fn main() {
                 }
                 hotkey_manager = Some(manager);
 
-                dropdown = Some(DropDown::new(target, &config).unwrap_or_else(|e| fail(&e)));
+                dropdown =
+                    Some(DropDown::new(target, &config, |_| {}).unwrap_or_else(|e| fail(&e)));
             }
             Event::UserEvent(AppEvent::Hotkey(e))
                 if e.id() == hotkey.id() && should_toggle(e.state()) =>
@@ -103,7 +104,7 @@ fn main() {
                 ..
             } => {
                 if let Some(dropdown) = dropdown.as_ref().filter(|d| d.window_id() == window_id) {
-                    dropdown.request_redraw();
+                    let _ = dropdown.resize_terminal_view();
                 }
             }
             Event::WindowEvent {
@@ -117,11 +118,6 @@ fn main() {
                         visibility = next;
                         dropdown.hide(Instant::now());
                     }
-                }
-            }
-            Event::RedrawRequested(window_id) => {
-                if let Some(dropdown) = dropdown.as_mut().filter(|d| d.window_id() == window_id) {
-                    dropdown.paint();
                 }
             }
             // Runs after every batch of events, including the timed wake-ups requested below.

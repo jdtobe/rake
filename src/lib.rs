@@ -7,6 +7,7 @@ pub mod geometry;
 pub mod hotkey;
 pub mod pty;
 pub mod terminal_protocol;
+pub mod terminal_view;
 
 use tray_icon::menu::AboutMetadata;
 use tray_icon::Icon;

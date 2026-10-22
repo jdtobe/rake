@@ -2,7 +2,6 @@
 //! hand rather than unit tested; the placement maths lives in [`crate::geometry`] and the
 //! slide maths in [`crate::animation`].
 
-use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -13,10 +12,9 @@ use tao::window::{Window, WindowBuilder, WindowId};
 use crate::animation::Slide;
 use crate::config::Config;
 use crate::geometry::{window_rect, Rect};
+use crate::terminal_protocol::TerminalEvent;
+use crate::terminal_view::TerminalView;
 use crate::APP_NAME;
-
-/// Placeholder background (0RGB) until a terminal renderer exists.
-const PLACEHOLDER_COLOR: u32 = 0x001e_1e1e;
 
 /// macOS keeps normal and floating windows below the menubar and silently clamps any frame that
 /// would go above it, which flattens the whole slide into one position. A window at the menubar's
@@ -67,7 +65,7 @@ mod macos {
 
 pub struct DropDown {
     window: Rc<Window>,
-    surface: softbuffer::Surface<Rc<Window>, Rc<Window>>,
+    terminal: TerminalView,
     width_percent: u8,
     height_percent: u8,
     animation: Duration,
@@ -86,10 +84,14 @@ pub struct DropDown {
 
 impl DropDown {
     /// Create the window hidden.
-    pub fn new<T: 'static>(
+    pub fn new<T: 'static, F>(
         target: &EventLoopWindowTarget<T>,
         config: &Config,
-    ) -> Result<Self, String> {
+        ipc: F,
+    ) -> Result<Self, String>
+    where
+        F: Fn(String) + 'static,
+    {
         let window = WindowBuilder::new()
             .with_title(APP_NAME)
             .with_decorations(false)
@@ -100,13 +102,10 @@ impl DropDown {
             .map_err(|e| format!("could not create window: {e}"))?;
         macos::raise_to_menubar_level(&window);
         let window = Rc::new(window);
-        let context = softbuffer::Context::new(window.clone())
-            .map_err(|e| format!("could not create drawing context: {e}"))?;
-        let surface = softbuffer::Surface::new(&context, window.clone())
-            .map_err(|e| format!("could not create drawing surface: {e}"))?;
+        let terminal = TerminalView::new(&window, ipc)?;
         Ok(DropDown {
             window,
-            surface,
+            terminal,
             width_percent: config.width_percent,
             height_percent: config.height_percent,
             animation: Duration::from_millis(config.animation_ms.into()),
@@ -170,6 +169,7 @@ impl DropDown {
             self.animation,
         ));
         self.window.set_focus();
+        let _ = self.terminal.focus();
         self.window.request_redraw();
         self.tick(now);
     }
@@ -220,24 +220,24 @@ impl DropDown {
         }
     }
 
-    pub fn request_redraw(&self) {
-        self.window.request_redraw();
+    pub fn resize_terminal_view(&self) -> Result<(), String> {
+        self.terminal
+            .set_bounds(self.window.inner_size(), self.window.scale_factor())
     }
 
-    /// Fill the window with the placeholder color.
-    pub fn paint(&mut self) {
-        let size = self.window.inner_size();
-        let (Some(width), Some(height)) =
-            (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-        else {
-            return;
-        };
-        if self.surface.resize(width, height).is_err() {
-            return;
-        }
-        if let Ok(mut buffer) = self.surface.buffer_mut() {
-            buffer.fill(PLACEHOLDER_COLOR);
-            let _ = buffer.present();
-        }
+    pub fn mark_terminal_ready(&mut self) {
+        self.terminal.mark_ready();
+    }
+
+    pub fn queue_terminal_event(&mut self, event: TerminalEvent) {
+        self.terminal.queue(event);
+    }
+
+    pub fn flush_terminal(&mut self) -> Result<(), String> {
+        self.terminal.flush()
+    }
+
+    pub fn focus_terminal(&self) -> Result<(), String> {
+        self.terminal.focus()
     }
 }
