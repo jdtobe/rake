@@ -5,6 +5,7 @@ pub mod config;
 pub mod dropdown;
 pub mod geometry;
 pub mod hotkey;
+pub mod terminal_protocol;
 
 use tray_icon::menu::AboutMetadata;
 use tray_icon::Icon;

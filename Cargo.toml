@@ -6,9 +6,11 @@ description = "A macOS-first Quake-style drop-down terminal"
 publish = false
 
 [dependencies]
+base64 = "0.23"
 global-hotkey = "0.9.0"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSScreen", "NSResponder"] }
 serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1"
 softbuffer = "0.4.8"
 tao = "0.37.1"
 toml = "1.1.8"
