@@ -6,6 +6,7 @@ use rake::config::{self, Config};
 use rake::dropdown::DropDown;
 use rake::hotkey::{should_toggle, Visibility};
 use rake::pty::{default_login_shell, PtySession, TerminalSize};
+use rake::terminal_profile;
 use rake::terminal_protocol::{parse_request, TerminalEvent, TerminalRequest};
 use rake::{about_metadata, build_icon, APP_NAME};
 use std::path::Path;
@@ -44,6 +45,7 @@ fn main() {
     }
     .unwrap_or_else(|e| fail(&e));
     let hotkey = config.hotkey().unwrap_or_else(|e| fail(&e));
+    let theme = terminal_profile::from_default_terminal().unwrap_or_default();
 
     let proxy = event_loop.create_proxy();
     let hotkey_proxy = proxy.clone();
@@ -94,7 +96,7 @@ fn main() {
                 hotkey_manager = Some(manager);
 
                 let ipc_proxy = proxy.clone();
-                let created_dropdown = DropDown::new(target, &config, move |body| {
+                let created_dropdown = DropDown::new(target, &config, &theme, move |body| {
                     let _ = ipc_proxy.send_event(AppEvent::TerminalRequest(body));
                 })
                 .unwrap_or_else(|e| fail(&e));

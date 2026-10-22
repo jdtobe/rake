@@ -1,12 +1,15 @@
 (() => {
   'use strict';
 
+  const config = /*__RAKE_CONFIG__*/;
   const container = document.getElementById('terminal');
-  const terminal = new Terminal({
+  const options = {
     cursorBlink: true,
-    fontFamily: 'ui-monospace, Menlo, Monaco, monospace',
-    theme: { background: '#1e1e1e' }
-  });
+    theme: config.theme
+  };
+  if (config.fontFamily) options.fontFamily = config.fontFamily;
+  if (config.fontSize) options.fontSize = config.fontSize;
+  const terminal = new Terminal(options);
   const fitAddon = new FitAddon.FitAddon();
   terminal.loadAddon(fitAddon);
   terminal.open(container);

@@ -14,6 +14,7 @@ use crate::config::Config;
 use crate::geometry::{window_rect, Rect};
 use crate::terminal_protocol::TerminalEvent;
 use crate::terminal_view::TerminalView;
+use crate::theme::TerminalTheme;
 use crate::APP_NAME;
 
 /// macOS keeps normal and floating windows below the menubar and silently clamps any frame that
@@ -101,6 +102,7 @@ impl DropDown {
     pub fn new<T: 'static, F>(
         target: &EventLoopWindowTarget<T>,
         config: &Config,
+        theme: &TerminalTheme,
         ipc: F,
     ) -> Result<Self, String>
     where
@@ -116,7 +118,7 @@ impl DropDown {
             .map_err(|e| format!("could not create window: {e}"))?;
         macos::raise_to_menubar_level(&window);
         let window = Rc::new(window);
-        let terminal = TerminalView::new(&window, ipc)?;
+        let terminal = TerminalView::new(&window, theme, ipc)?;
         Ok(DropDown {
             window,
             terminal,

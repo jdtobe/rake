@@ -1,6 +1,7 @@
 //! The local xterm.js document and its native webview.
 
 use crate::terminal_protocol::{delivery_script, TerminalBridge, TerminalDelivery, TerminalEvent};
+use crate::theme::TerminalTheme;
 use tao::dpi::{LogicalPosition, PhysicalSize};
 use tao::window::Window;
 use wry::{NewWindowResponse, Rect, WebView, WebViewBuilder};
@@ -11,12 +12,14 @@ const XTERM_JS: &str = include_str!("../assets/terminal/xterm.js");
 const ADDON_FIT_JS: &str = include_str!("../assets/terminal/addon-fit.js");
 const RAKE_JS: &str = include_str!("../assets/terminal/rake.js");
 
-pub fn terminal_html() -> String {
+pub fn terminal_html(theme: &TerminalTheme) -> String {
+    let rake_js = RAKE_JS.replace("/*__RAKE_CONFIG__*/", &theme.config_json());
     INDEX_HTML
+        .replace("/*__THEME_BACKGROUND__*/", &theme.background.hex())
         .replace("/*__XTERM_CSS__*/", XTERM_CSS)
         .replace("/*__XTERM_JS__*/", XTERM_JS)
         .replace("/*__ADDON_FIT_JS__*/", ADDON_FIT_JS)
-        .replace("/*__RAKE_JS__*/", RAKE_JS)
+        .replace("/*__RAKE_JS__*/", &rake_js)
 }
 
 fn navigation_allowed(url: &str) -> bool {
@@ -64,12 +67,12 @@ pub struct TerminalView {
 }
 
 impl TerminalView {
-    pub fn new<F>(window: &Window, ipc: F) -> Result<Self, String>
+    pub fn new<F>(window: &Window, theme: &TerminalTheme, ipc: F) -> Result<Self, String>
     where
         F: Fn(String) + 'static,
     {
         let webview = WebViewBuilder::new()
-            .with_html(terminal_html())
+            .with_html(terminal_html(theme))
             .with_ipc_handler(move |request| ipc(request.body().clone()))
             .with_navigation_handler(|url| navigation_allowed(&url))
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
@@ -123,10 +126,11 @@ impl TerminalView {
 mod tests {
     use super::*;
     use crate::terminal_protocol::TerminalEvent;
+    use crate::theme::{Rgb, TerminalTheme};
 
     #[test]
     fn terminal_document_bundles_pinned_assets_without_remote_loads() {
-        let html = terminal_html();
+        let html = terminal_html(&TerminalTheme::default());
         assert!(html.contains("xterm.js 6.0.0"));
         assert!(html.contains("addon-fit 0.11.0"));
         assert!(!html.contains("<script src=\"http"));
@@ -134,8 +138,33 @@ mod tests {
     }
 
     #[test]
+    fn terminal_document_applies_the_given_theme() {
+        let theme = TerminalTheme {
+            background: Rgb::new(0x21, 0x21, 0x21),
+            foreground: Some(Rgb::new(0xd0, 0xd0, 0xd0)),
+            cursor: None,
+            ansi: None,
+            font_family: Some("Menlo".to_string()),
+            font_size: Some(14.7),
+        };
+        let html = terminal_html(&theme);
+        assert!(html.contains(r##""foreground":"#d0d0d0""##));
+        assert!(html.contains(r##""fontFamily":"Menlo""##));
+        assert!(html.contains(r##""fontSize":14.7"##));
+        assert!(html.contains("background: #212121"));
+        assert!(
+            !html.contains("__RAKE_CONFIG__"),
+            "theme placeholder left behind"
+        );
+        assert!(
+            !html.contains("__THEME_BACKGROUND__"),
+            "background placeholder left behind"
+        );
+    }
+
+    #[test]
     fn terminal_document_fills_the_window_and_installs_rake_bridge() {
-        let html = terminal_html();
+        let html = terminal_html(&TerminalTheme::default());
         assert!(html.contains("id=\"terminal\""));
         assert!(html.contains("height: 100%"));
         assert!(html.contains("window.rake"));
@@ -146,7 +175,7 @@ mod tests {
 
     #[test]
     fn terminal_document_reports_readiness_input_and_positive_size() {
-        let html = terminal_html();
+        let html = terminal_html(&TerminalTheme::default());
         for message_type in ["ready", "input", "resize"] {
             assert!(
                 html.contains(&format!("type: '{message_type}'")),
@@ -198,7 +227,7 @@ mod tests {
 
     #[test]
     fn terminal_document_uses_the_native_clipboard() {
-        let html = terminal_html();
+        let html = terminal_html(&TerminalTheme::default());
         for request in ["copy", "paste"] {
             assert!(
                 html.contains(&format!("type: '{request}'")),

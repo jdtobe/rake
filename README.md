@@ -15,6 +15,7 @@ Rake is a macOS-first Quake-style drop-down terminal written in Rust. Press a ho
 | Configuration | Hotkey, window size, hide on focus lost, animation time (config file only) |
 | Settings menu in the menubar | Not started |
 | Embedded terminal (shell + rendering) | Working as one persistent login-shell session; final keyboard/clipboard checks pending |
+| Terminal colours and font | Follows the macOS Terminal default profile; changes apply on restart |
 | Tabs and profiles | Planned after the single-session terminal is validated |
 | Linux / Windows | Not tested |
 
