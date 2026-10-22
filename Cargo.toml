@@ -1,8 +1,8 @@
 [package]
-name = "quake-terminal"
+name = "rake"
 version = "0.1.0"
 edition = "2021"
-description = "A Quake-style drop-down terminal (currently: a menubar icon with About and Quit)"
+description = "A macOS-first Quake-style drop-down terminal"
 publish = false
 
 [dependencies]

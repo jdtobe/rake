@@ -1,10 +1,10 @@
-# quake-terminal
+# Rake
 
-A Quake-style drop-down terminal, written in Rust. Press a hotkey and a terminal slides down from the top of the screen; press it again and it slides away.
+Rake is a macOS-first Quake-style drop-down terminal written in Rust. Press a hotkey and a terminal panel slides down from the top of the screen; press it again and it slides away.
 
 ## Status
 
-**Early. Only the first step exists.**
+**Early. The drop-down shell exists; terminal emulation is the next milestone.**
 
 | Capability | State |
 |---|---|
@@ -29,7 +29,7 @@ An icon appears in the menubar (no Dock icon). Click it for **About** (native pa
 
 ## Configure
 
-Optional. Create `~/.config/quake-terminal/config.toml`; a missing file means defaults. Changes need a restart. A bad file stops the app with an error naming the file and the problem.
+Optional. Create `~/.config/rake/config.toml`; a missing file means defaults. Changes need a restart. A bad file stops the app with an error naming the file and the problem.
 
 ```toml
 # Global key that shows/hides the terminal. Default: "Ctrl+`"

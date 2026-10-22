@@ -8,6 +8,6 @@ Decisions we haven't made yet. Resolve one by recording an [ADR](adr/) and remov
 4. **Distribution.** Is `cargo run` enough, or do we need a signed `.app` bundle (for notifications, a proper About icon, launch at login)?
 5. **Menubar icon art.** The icon is currently a solid placeholder square.
 6. **Linux and Windows.** Is cross-platform a real goal, or an option we keep open? This decides how much we invest in abstractions.
-7. **Licensing and project name.** The crate is named `quake-terminal`, which may be too close to existing projects.
+7. **Licensing.** Which license should Rake use?
 
 Resolved: milestone order (window and animation come before the terminal, with a placeholder fill), default hotkey and config format, location and reload behavior ([ADR 5](adr/0005-toml-config-read-at-startup.md)).

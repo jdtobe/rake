@@ -1,4 +1,4 @@
-# Design
+# Rake design
 
 ## Current architecture
 

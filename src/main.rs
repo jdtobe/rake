@@ -1,10 +1,10 @@
 //! Menubar app: a tray icon with About and Quit, plus a global show/hide hotkey.
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
-use quake_terminal::config::{self, Config};
-use quake_terminal::dropdown::DropDown;
-use quake_terminal::hotkey::{should_toggle, Visibility};
-use quake_terminal::{about_metadata, build_icon};
+use rake::config::{self, Config};
+use rake::dropdown::DropDown;
+use rake::hotkey::{should_toggle, Visibility};
+use rake::{about_metadata, build_icon, APP_NAME};
 use std::path::Path;
 use std::time::Instant;
 use tao::event::{Event, StartCause, WindowEvent};
@@ -67,7 +67,7 @@ fn main() {
             Event::NewEvents(StartCause::Init) => {
                 let builder = TrayIconBuilder::new()
                     .with_menu(Box::new(menu.clone()))
-                    .with_tooltip(env!("CARGO_PKG_NAME"));
+                    .with_tooltip(APP_NAME);
                 // Template icons are recoloured by macOS for light/dark menubars.
                 #[cfg(target_os = "macos")]
                 let builder = builder.with_icon_templated(build_icon());

@@ -1,8 +1,8 @@
-# Roadmap
+# Rake roadmap
 
 ## Goal
 
-A fast, native, always-available terminal that drops down from the top of the screen on a global hotkey, in the spirit of the console in Quake. macOS first, cross-platform if practical.
+Rake is a fast, native, always-available terminal that drops down from the top of the screen on a global hotkey, in the spirit of the console in Quake. macOS first, cross-platform if practical.
 
 ## Expected feature set
 

@@ -13,6 +13,7 @@ use tao::window::{Window, WindowBuilder, WindowId};
 use crate::animation::Slide;
 use crate::config::Config;
 use crate::geometry::{window_rect, Rect};
+use crate::APP_NAME;
 
 /// Placeholder background (0RGB) until a terminal renderer exists.
 const PLACEHOLDER_COLOR: u32 = 0x001e_1e1e;
@@ -90,7 +91,7 @@ impl DropDown {
         config: &Config,
     ) -> Result<Self, String> {
         let window = WindowBuilder::new()
-            .with_title(env!("CARGO_PKG_NAME"))
+            .with_title(APP_NAME)
             .with_decorations(false)
             .with_resizable(false)
             .with_always_on_top(true)
