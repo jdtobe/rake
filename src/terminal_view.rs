@@ -197,6 +197,22 @@ mod tests {
     }
 
     #[test]
+    fn terminal_document_uses_the_native_clipboard() {
+        let html = terminal_html();
+        for request in ["copy", "paste"] {
+            assert!(
+                html.contains(&format!("type: '{request}'")),
+                "missing {request} request"
+            );
+        }
+        assert!(html.contains("paste(text)"), "missing bridge paste");
+        assert!(
+            !html.contains("navigator.clipboard"),
+            "the page is not a secure context, so it has no clipboard API"
+        );
+    }
+
+    #[test]
     fn navigation_allows_embedded_document_but_denies_external_urls() {
         assert!(navigation_allowed("about:blank"));
         assert!(navigation_allowed("data:text/html;charset=utf-8,terminal"));

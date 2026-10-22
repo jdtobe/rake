@@ -9,7 +9,8 @@ publish = false
 base64 = "0.23"
 global-hotkey = "0.9.0"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSWindow", "NSScreen", "NSResponder"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSPasteboard", "NSWindow", "NSScreen", "NSResponder"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
 portable-pty = "0.9"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"

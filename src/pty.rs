@@ -216,6 +216,7 @@ mod tests {
                 TerminalEvent::Output(bytes) => output.extend(bytes),
                 TerminalEvent::Exited { .. } => break,
                 TerminalEvent::Failed(error) => panic!("PTY failed: {error}"),
+                TerminalEvent::Paste(text) => panic!("unexpected paste delivery: {text}"),
             }
         }
 

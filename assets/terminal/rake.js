@@ -29,11 +29,11 @@
   terminal.attachCustomKeyEventHandler(event => {
     if (!event.metaKey || event.type !== 'keydown') return true;
     if (event.key.toLowerCase() === 'c' && terminal.hasSelection()) {
-      navigator.clipboard.writeText(terminal.getSelection());
+      post({ type: 'copy', data: terminal.getSelection() });
       return false;
     }
     if (event.key.toLowerCase() === 'v') {
-      navigator.clipboard.readText().then(text => terminal.paste(text));
+      post({ type: 'paste' });
       return false;
     }
     return true;
@@ -48,6 +48,9 @@
     end(message) {
       terminal.write(`\r\n\r\n[${message}]\r\n`);
       terminal.options.disableStdin = true;
+    },
+    paste(text) {
+      if (!terminal.options.disableStdin) terminal.paste(text);
     },
     focus() {
       terminal.focus();

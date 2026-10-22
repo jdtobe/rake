@@ -41,6 +41,8 @@ While a slide runs, the loop spins with `ControlFlow::Poll`; otherwise it sleeps
 
 Platform-specific code stays behind `cfg` gates and small functions so a second platform adds code rather than rewriting the first.
 
+**Clipboard.** The terminal page is loaded from an in-memory HTML string, so it has an opaque origin and is not a secure context; `navigator.clipboard` does not exist there. Copy and paste therefore travel over IPC: the page sends the selected text (or a paste request), and `src/clipboard.rs` reads and writes the native pasteboard. Paste is delivered back to the page so xterm.js applies bracketed-paste and key handling before the text reaches the shell.
+
 ## Complications we expect
 
 - **Main-thread GUI.** macOS requires UI work on the main thread. Terminal I/O (PTY reads) must run on other threads and send events to the loop.

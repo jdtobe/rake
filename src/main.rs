@@ -1,6 +1,7 @@
 //! Menubar app: a tray icon with About and Quit, plus a global show/hide hotkey.
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
+use rake::clipboard;
 use rake::config::{self, Config};
 use rake::dropdown::DropDown;
 use rake::hotkey::{should_toggle, Visibility};
@@ -156,6 +157,21 @@ fn main() {
                         }
                     }
                 }
+                Ok(TerminalRequest::Copy(text)) => {
+                    if let Err(error) = clipboard::write(&text) {
+                        eprintln!("{error}");
+                    }
+                }
+                Ok(TerminalRequest::Paste) if terminal_accepting_input => match clipboard::read() {
+                    Ok(Some(text)) if !text.is_empty() => {
+                        if let Some(dropdown) = &mut dropdown {
+                            dropdown.queue_terminal_event(TerminalEvent::Paste(text));
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(error) => eprintln!("{error}"),
+                },
+                Ok(TerminalRequest::Paste) => {}
                 Err(error) => eprintln!("{error}"),
             },
             Event::UserEvent(AppEvent::Terminal(event)) => {

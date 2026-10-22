@@ -10,6 +10,8 @@ pub enum TerminalRequest {
     Ready,
     Input(Vec<u8>),
     Resize { cols: u16, rows: u16 },
+    Copy(String),
+    Paste,
 }
 
 #[derive(Deserialize)]
@@ -18,6 +20,8 @@ enum RequestKind {
     Ready,
     Input,
     Resize,
+    Copy,
+    Paste,
 }
 
 #[derive(Deserialize)]
@@ -38,6 +42,8 @@ pub fn parse_request(body: &str) -> Result<TerminalRequest, String> {
         (RequestKind::Input, Some(data), None, None) => {
             Ok(TerminalRequest::Input(data.into_bytes()))
         }
+        (RequestKind::Copy, Some(data), None, None) => Ok(TerminalRequest::Copy(data)),
+        (RequestKind::Paste, None, None, None) => Ok(TerminalRequest::Paste),
         (RequestKind::Resize, None, Some(0), Some(_)) => {
             Err("terminal columns must be positive".to_string())
         }
@@ -56,6 +62,7 @@ pub enum TerminalEvent {
     Output(Vec<u8>),
     Exited { code: Option<u32> },
     Failed(String),
+    Paste(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +70,7 @@ pub enum TerminalDelivery {
     Output(Vec<u8>),
     Exited { code: Option<u32> },
     Failed(String),
+    Paste(String),
 }
 
 #[derive(Default)]
@@ -83,6 +91,7 @@ impl TerminalBridge {
             }
             TerminalEvent::Exited { code } => TerminalDelivery::Exited { code },
             TerminalEvent::Failed(message) => TerminalDelivery::Failed(message),
+            TerminalEvent::Paste(text) => TerminalDelivery::Paste(text),
         };
         self.pending.push_back(delivery);
     }
@@ -131,6 +140,10 @@ pub fn delivery_script(delivery: &TerminalDelivery) -> String {
                 serde_json::to_string(&message).expect("a string always serializes")
             )
         }
+        TerminalDelivery::Paste(text) => format!(
+            "window.rake.paste({});",
+            serde_json::to_string(text).expect("a string always serializes")
+        ),
     }
 }
 
@@ -162,6 +175,54 @@ mod tests {
                 cols: 120,
                 rows: 40
             }
+        );
+    }
+
+    #[test]
+    fn parse_copy_and_paste_requests() {
+        assert_eq!(
+            parse_request(r#"{"type":"copy","data":"hello"}"#).unwrap(),
+            TerminalRequest::Copy("hello".to_string())
+        );
+        assert_eq!(
+            parse_request(r#"{"type":"paste"}"#).unwrap(),
+            TerminalRequest::Paste
+        );
+    }
+
+    #[test]
+    fn parse_rejects_copy_or_paste_with_wrong_fields() {
+        for body in [
+            r#"{"type":"copy"}"#,
+            r#"{"type":"paste","data":"x"}"#,
+            r#"{"type":"copy","data":"x","cols":80}"#,
+        ] {
+            assert!(parse_request(body).is_err(), "accepted {body}");
+        }
+    }
+
+    #[test]
+    fn paste_delivery_script_quotes_the_text() {
+        assert_eq!(
+            delivery_script(&TerminalDelivery::Paste("a\"b\r\n".to_string())),
+            "window.rake.paste(\"a\\\"b\\r\\n\");"
+        );
+    }
+
+    #[test]
+    fn bridge_keeps_paste_separate_from_output() {
+        let mut bridge = TerminalBridge::default();
+        bridge.mark_ready();
+        bridge.push(TerminalEvent::Output(b"before".to_vec()));
+        bridge.push(TerminalEvent::Paste("pasted".to_string()));
+        bridge.push(TerminalEvent::Output(b"after".to_vec()));
+        assert_eq!(
+            bridge.take_deliveries(),
+            vec![
+                TerminalDelivery::Output(b"before".to_vec()),
+                TerminalDelivery::Paste("pasted".to_string()),
+                TerminalDelivery::Output(b"after".to_vec()),
+            ]
         );
     }
 
