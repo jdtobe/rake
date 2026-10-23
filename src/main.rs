@@ -1,10 +1,14 @@
 //! Menubar app: a tray icon with About and Quit, plus a global show/hide hotkey.
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
-use quake_terminal::config::{self, Config};
-use quake_terminal::dropdown::DropDown;
-use quake_terminal::hotkey::{should_toggle, Visibility};
-use quake_terminal::{about_metadata, build_icon};
+use rake::clipboard;
+use rake::config::{self, Config};
+use rake::dropdown::DropDown;
+use rake::hotkey::{should_toggle, Visibility};
+use rake::pty::{default_login_shell, PtySession, TerminalSize};
+use rake::terminal_profile;
+use rake::terminal_protocol::{parse_request, TerminalEvent, TerminalRequest};
+use rake::{about_metadata, build_icon, APP_NAME};
 use std::path::Path;
 use std::time::Instant;
 use tao::event::{Event, StartCause, WindowEvent};
@@ -18,6 +22,8 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 #[derive(Debug)]
 enum AppEvent {
     Hotkey(GlobalHotKeyEvent),
+    TerminalRequest(String),
+    Terminal(TerminalEvent),
 }
 
 /// Report an unrecoverable startup problem and exit.
@@ -39,10 +45,12 @@ fn main() {
     }
     .unwrap_or_else(|e| fail(&e));
     let hotkey = config.hotkey().unwrap_or_else(|e| fail(&e));
+    let theme = terminal_profile::from_default_terminal().unwrap_or_default();
 
     let proxy = event_loop.create_proxy();
+    let hotkey_proxy = proxy.clone();
     GlobalHotKeyEvent::set_event_handler(Some(move |event| {
-        let _ = proxy.send_event(AppEvent::Hotkey(event));
+        let _ = hotkey_proxy.send_event(AppEvent::Hotkey(event));
     }));
 
     let menu = Menu::new();
@@ -57,8 +65,11 @@ fn main() {
     // (required on macOS), and must be kept alive for as long as the loop runs.
     let mut tray: Option<TrayIcon> = None;
     let mut hotkey_manager: Option<GlobalHotKeyManager> = None;
-    let mut visibility = Visibility::Hidden;
+    let mut visibility = Visibility::Shown;
     let mut dropdown: Option<DropDown> = None;
+    let mut terminal: Option<PtySession> = None;
+    let mut terminal_accepting_input = false;
+    let mut show_on_launch = false;
 
     event_loop.run(move |event, target, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -67,7 +78,7 @@ fn main() {
             Event::NewEvents(StartCause::Init) => {
                 let builder = TrayIconBuilder::new()
                     .with_menu(Box::new(menu.clone()))
-                    .with_tooltip(env!("CARGO_PKG_NAME"));
+                    .with_tooltip(APP_NAME);
                 // Template icons are recoloured by macOS for light/dark menubars.
                 #[cfg(target_os = "macos")]
                 let builder = builder.with_icon_templated(build_icon());
@@ -84,7 +95,26 @@ fn main() {
                 }
                 hotkey_manager = Some(manager);
 
-                dropdown = Some(DropDown::new(target, &config).unwrap_or_else(|e| fail(&e)));
+                let ipc_proxy = proxy.clone();
+                let created_dropdown = DropDown::new(target, &config, &theme, move |body| {
+                    let _ = ipc_proxy.send_event(AppEvent::TerminalRequest(body));
+                })
+                .unwrap_or_else(|e| fail(&e));
+
+                let pty_proxy = proxy.clone();
+                terminal = Some(
+                    PtySession::spawn(
+                        default_login_shell(std::env::var_os("SHELL")),
+                        TerminalSize::new(80, 24).expect("initial terminal size is positive"),
+                        move |event| {
+                            let _ = pty_proxy.send_event(AppEvent::Terminal(event));
+                        },
+                    )
+                    .unwrap_or_else(|e| fail(&e)),
+                );
+                terminal_accepting_input = true;
+                dropdown = Some(created_dropdown);
+                show_on_launch = true;
             }
             Event::UserEvent(AppEvent::Hotkey(e))
                 if e.id() == hotkey.id() && should_toggle(e.state()) =>
@@ -97,13 +127,73 @@ fn main() {
                     }
                 }
             }
+            Event::UserEvent(AppEvent::TerminalRequest(body)) => match parse_request(&body) {
+                Ok(TerminalRequest::Ready) => {
+                    if let Some(dropdown) = &mut dropdown {
+                        dropdown.mark_terminal_ready();
+                        if let Err(error) = dropdown.focus_terminal() {
+                            eprintln!("{error}");
+                        }
+                    }
+                }
+                Ok(TerminalRequest::Input(bytes)) if terminal_accepting_input => {
+                    if let Some(session) = &mut terminal {
+                        if let Err(error) = session.write(&bytes) {
+                            terminal_accepting_input = false;
+                            if let Some(dropdown) = &mut dropdown {
+                                dropdown.queue_terminal_event(TerminalEvent::Failed(error));
+                            }
+                        }
+                    }
+                }
+                Ok(TerminalRequest::Input(_)) => {}
+                Ok(TerminalRequest::Resize { cols, rows }) => {
+                    let size = TerminalSize::new(cols, rows)
+                        .expect("terminal protocol rejects zero dimensions");
+                    if let Some(session) = &mut terminal {
+                        if let Err(error) = session.resize(size) {
+                            terminal_accepting_input = false;
+                            if let Some(dropdown) = &mut dropdown {
+                                dropdown.queue_terminal_event(TerminalEvent::Failed(error));
+                            }
+                        }
+                    }
+                }
+                Ok(TerminalRequest::Copy(text)) => {
+                    if let Err(error) = clipboard::write(&text) {
+                        eprintln!("{error}");
+                    }
+                }
+                Ok(TerminalRequest::Paste) if terminal_accepting_input => match clipboard::read() {
+                    Ok(Some(text)) if !text.is_empty() => {
+                        if let Some(dropdown) = &mut dropdown {
+                            dropdown.queue_terminal_event(TerminalEvent::Paste(text));
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(error) => eprintln!("{error}"),
+                },
+                Ok(TerminalRequest::Paste) => {}
+                Err(error) => eprintln!("{error}"),
+            },
+            Event::UserEvent(AppEvent::Terminal(event)) => {
+                if matches!(
+                    event,
+                    TerminalEvent::Exited { .. } | TerminalEvent::Failed(_)
+                ) {
+                    terminal_accepting_input = false;
+                }
+                if let Some(dropdown) = &mut dropdown {
+                    dropdown.queue_terminal_event(event);
+                }
+            }
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::Resized(_),
                 ..
             } => {
                 if let Some(dropdown) = dropdown.as_ref().filter(|d| d.window_id() == window_id) {
-                    dropdown.request_redraw();
+                    let _ = dropdown.resize_terminal_view();
                 }
             }
             Event::WindowEvent {
@@ -119,15 +209,17 @@ fn main() {
                     }
                 }
             }
-            Event::RedrawRequested(window_id) => {
-                if let Some(dropdown) = dropdown.as_mut().filter(|d| d.window_id() == window_id) {
-                    dropdown.paint();
-                }
-            }
             // Runs after every batch of events, including the timed wake-ups requested below.
             Event::MainEventsCleared => {
                 if let Some(dropdown) = &mut dropdown {
+                    if show_on_launch {
+                        show_on_launch = false;
+                        dropdown.show(Instant::now());
+                    }
                     dropdown.tick(Instant::now());
+                    if let Err(error) = dropdown.flush_terminal() {
+                        eprintln!("{error}");
+                    }
                 }
             }
             _ => {}
@@ -140,6 +232,6 @@ fn main() {
         if dropdown.as_ref().is_some_and(DropDown::is_animating) {
             *control_flow = ControlFlow::Poll;
         }
-        let _ = (&tray, &hotkey_manager);
+        let _ = (&tray, &hotkey_manager, &terminal);
     });
 }

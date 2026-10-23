@@ -1,4 +1,4 @@
-//! User configuration, read once at startup from `~/.config/quake-terminal/config.toml`.
+//! User configuration, read once at startup from `~/.config/rake/config.toml`.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -76,9 +76,7 @@ impl Config {
 }
 
 pub fn config_path(home: &Path) -> PathBuf {
-    home.join(".config")
-        .join("quake-terminal")
-        .join("config.toml")
+    home.join(".config").join("rake").join("config.toml")
 }
 
 /// Load the config at `path`. A missing file means defaults; any other problem is an error
@@ -97,8 +95,7 @@ mod tests {
     use super::*;
 
     fn temp_file(name: &str, contents: Option<&str>) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("quake-terminal-test-{}-{name}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("rake-test-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
@@ -216,10 +213,10 @@ mod tests {
     }
 
     #[test]
-    fn config_path_is_under_dot_config() {
+    fn config_path_uses_rake_directory() {
         assert_eq!(
             config_path(Path::new("/home/me")),
-            PathBuf::from("/home/me/.config/quake-terminal/config.toml")
+            PathBuf::from("/home/me/.config/rake/config.toml")
         );
     }
 

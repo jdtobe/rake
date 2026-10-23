@@ -1,15 +1,22 @@
 //! Pure helpers for the menubar app, kept separate from the event loop so they can be unit tested.
 
 pub mod animation;
+pub mod clipboard;
 pub mod config;
 pub mod dropdown;
 pub mod geometry;
 pub mod hotkey;
+pub mod pty;
+pub mod terminal_profile;
+pub mod terminal_protocol;
+pub mod terminal_view;
+pub mod theme;
 
 use tray_icon::menu::AboutMetadata;
 use tray_icon::Icon;
 
 pub const ICON_SIZE: u32 = 22;
+pub const APP_NAME: &str = "Rake";
 
 /// RGBA pixels for the menubar icon: a solid square with a one-pixel transparent margin.
 pub fn build_icon_rgba() -> Vec<u8> {
@@ -29,7 +36,7 @@ pub fn build_icon() -> Icon {
 
 pub fn about_metadata() -> AboutMetadata {
     AboutMetadata {
-        name: Some(env!("CARGO_PKG_NAME").to_string()),
+        name: Some(APP_NAME.to_string()),
         version: Some(env!("CARGO_PKG_VERSION").to_string()),
         ..Default::default()
     }
@@ -59,9 +66,9 @@ mod tests {
     }
 
     #[test]
-    fn about_metadata_uses_cargo_package_info() {
+    fn about_metadata_uses_rake_brand() {
         let meta = about_metadata();
-        assert_eq!(meta.name.as_deref(), Some(env!("CARGO_PKG_NAME")));
+        assert_eq!(meta.name.as_deref(), Some("Rake"));
         assert_eq!(meta.version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
     }
 }
