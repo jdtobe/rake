@@ -1,0 +1,81 @@
+name: Release
+
+# Cut a release by hand from the Actions tab (Run workflow) on main. Releases are not
+# automatic: the version scheme is v{YY}.{month}.{build}, where the build number counts
+# releases in that month and starts at 0, so the first release of October 2026 is v26.10.0.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish a release
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the branch
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Releases are cut from main, not ${GITHUB_REF}"
+            exit 1
+          fi
+
+      - name: Full checks
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test --all-targets
+          cargo test --doc
+
+      - name: Work out the version
+        id: version
+        run: echo "tag=$(.github/scripts/next-version.sh)" >> "$GITHUB_OUTPUT"
+
+      # The tag is the release version; put it in the binary too so About matches the tag.
+      # Nothing is committed back, so the repository keeps its development version.
+      - name: Stamp the version into the build
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          version="${TAG#v}"
+          perl -pi -e "s/^version = \"[^\"]*\"/version = \"${version}\"/" Cargo.toml
+          grep -q "^version = \"${version}\"$" Cargo.toml
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Package
+        id: package
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          name="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name')"
+          archive="dist/${name}-${TAG}-$(uname -m)-apple-darwin.tar.gz"
+          mkdir -p dist
+          tar -czf "${archive}" -C target/release "${name}"
+          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          gh release create "${TAG}" "${ARCHIVE}" \
+            --title "${TAG}" \
+            --generate-notes \
+            --target "${GITHUB_SHA}"

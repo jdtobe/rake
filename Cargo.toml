@@ -3,6 +3,8 @@ name = "rake"
 version = "0.1.0"
 edition = "2021"
 description = "A macOS-first Quake-style drop-down terminal"
+license = "MIT"
+repository = "https://github.com/jdtobe/rake"
 publish = false
 
 [dependencies]
