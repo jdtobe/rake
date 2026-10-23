@@ -1,5 +1,7 @@
 # quake-terminal
 
+[![CI](https://github.com/jdtobe/rake/actions/workflows/ci.yml/badge.svg)](https://github.com/jdtobe/rake/actions/workflows/ci.yml)
+
 A Quake-style drop-down terminal, written in Rust. Press a hotkey and a terminal slides down from the top of the screen; press it again and it slides away.
 
 ## Status
@@ -59,6 +61,20 @@ cargo fmt
 ```
 
 Requires a stable Rust toolchain.
+
+Every push runs formatting, lints and tests on macOS in CI; pull requests run the same
+checks across all targets and the doc tests. Releases are cut by hand from the Actions
+tab, never on merge, and are tagged `v{YY}.{month}.{build}` (the first release of
+October 2026 is `v26.10.0`).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security problems should follow
+[SECURITY.md](SECURITY.md) rather than be filed as public issues.
+
+## Licence
+
+[MIT](LICENSE).
 
 ## Documentation
 

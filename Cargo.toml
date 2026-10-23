@@ -3,6 +3,8 @@ name = "quake-terminal"
 version = "0.1.0"
 edition = "2021"
 description = "A Quake-style drop-down terminal (currently: a menubar icon with About and Quit)"
+license = "MIT"
+repository = "https://github.com/jdtobe/rake"
 publish = false
 
 [dependencies]

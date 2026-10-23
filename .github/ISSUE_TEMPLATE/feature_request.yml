@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest a capability or a change in behaviour
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Rake is early and deliberately small; read the [roadmap](../blob/main/docs/roadmap.md)
+        first. Check the [open questions](../blob/main/docs/open-questions.md) too, since some
+        of this may already be decided or deferred.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that Rake makes hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: How it might work. Rough is fine.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other terminals solve this how? Anything you have tried?
