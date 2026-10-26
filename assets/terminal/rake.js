@@ -14,6 +14,17 @@
   terminal.loadAddon(fitAddon);
   terminal.open(container);
 
+  // Hardware rendering for heavy output; if WebGL is unavailable or the
+  // context is lost, dispose the addon and xterm keeps its DOM renderer.
+  let webgl = null;
+  try {
+    webgl = new WebglAddon();
+    terminal.loadAddon(webgl);
+    webgl.onContextLoss(() => webgl.dispose());
+  } catch (error) {
+    webgl = null;
+  }
+
   const post = message => window.ipc.postMessage(JSON.stringify(message));
   let lastSize = '';
   const fit = () => {

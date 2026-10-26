@@ -10,6 +10,7 @@ const INDEX_HTML: &str = include_str!("../assets/terminal/index.html");
 const XTERM_CSS: &str = include_str!("../assets/terminal/xterm.css");
 const XTERM_JS: &str = include_str!("../assets/terminal/xterm.js");
 const ADDON_FIT_JS: &str = include_str!("../assets/terminal/addon-fit.js");
+const ADDON_WEBGL_JS: &str = include_str!("../assets/terminal/addon-webgl.js");
 const RAKE_JS: &str = include_str!("../assets/terminal/rake.js");
 
 pub fn terminal_html(theme: &TerminalTheme) -> String {
@@ -19,6 +20,7 @@ pub fn terminal_html(theme: &TerminalTheme) -> String {
         .replace("/*__XTERM_CSS__*/", XTERM_CSS)
         .replace("/*__XTERM_JS__*/", XTERM_JS)
         .replace("/*__ADDON_FIT_JS__*/", ADDON_FIT_JS)
+        .replace("/*__ADDON_WEBGL_JS__*/", ADDON_WEBGL_JS)
         .replace("/*__RAKE_JS__*/", &rake_js)
 }
 
@@ -238,6 +240,25 @@ mod tests {
         assert!(
             !html.contains("navigator.clipboard"),
             "the page is not a secure context, so it has no clipboard API"
+        );
+    }
+
+    #[test]
+    fn terminal_document_loads_the_webgl_renderer_before_the_app_script() {
+        let html = terminal_html(&TerminalTheme::default());
+        assert!(
+            html.contains("terminal.loadAddon(webgl)"),
+            "the webgl renderer is not loaded"
+        );
+        let addon = html
+            .find("WebglAddon")
+            .expect("the addon bundle is missing");
+        let app = html
+            .find("window.rake = {")
+            .expect("the app script is missing");
+        assert!(
+            addon < app,
+            "the addon must be defined before the app script uses it"
         );
     }
 
