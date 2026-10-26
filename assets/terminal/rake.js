@@ -18,7 +18,8 @@
   // context is lost, dispose the addon and xterm keeps its DOM renderer.
   let webgl = null;
   try {
-    webgl = new WebglAddon();
+    // The UMD bundle exposes the namespace, so the class is one level down.
+    webgl = new WebglAddon.WebglAddon();
     terminal.loadAddon(webgl);
     webgl.onContextLoss(() => webgl.dispose());
   } catch (error) {

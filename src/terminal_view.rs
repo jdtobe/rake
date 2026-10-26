@@ -250,6 +250,10 @@ mod tests {
             html.contains("terminal.loadAddon(webgl)"),
             "the webgl renderer is not loaded"
         );
+        assert!(
+            html.contains("new WebglAddon.WebglAddon()"),
+            "the UMD bundle exposes the addon as a namespace, not a bare constructor"
+        );
         let addon = html
             .find("WebglAddon")
             .expect("the addon bundle is missing");
