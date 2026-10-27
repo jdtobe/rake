@@ -13,6 +13,7 @@ pub mod terminal_view;
 pub mod theme;
 
 use tray_icon::menu::AboutMetadata;
+use tray_icon::menu::Icon as AboutIcon;
 use tray_icon::Icon;
 
 /// Pixel size of the menubar icon. The drawing grid is 22 units; drawing at twice that
@@ -79,10 +80,51 @@ pub fn build_icon() -> Icon {
     Icon::from_rgba(build_icon_rgba(), ICON_SIZE, ICON_SIZE).expect("icon buffer matches size")
 }
 
+/// The colour app icon, compiled in from the same master that produces the menubar mark.
+const APP_ICON_PNG: &[u8] = include_bytes!("../assets/icons/app-1024.png");
+
+/// Decode the app icon to RGBA pixels: `(pixels, width, height)`.
+fn app_icon_rgba() -> (Vec<u8>, u32, u32) {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(APP_ICON_PNG))
+        .read_info()
+        .expect("the app icon is a valid PNG");
+    let mut buffer = vec![
+        0;
+        reader
+            .output_buffer_size()
+            .expect("the icon fits in memory")
+    ];
+    let info = reader
+        .next_frame(&mut buffer)
+        .expect("the app icon has one frame");
+    buffer.truncate(info.buffer_size());
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => buffer,
+        png::ColorType::Rgb => buffer
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .flat_map(|pixel| [pixel[0], pixel[1], pixel[2], 255])
+            .collect(),
+        other => panic!("the app icon must be RGB or RGBA, not {other:?}"),
+    };
+    (rgba, info.width, info.height)
+}
+
+/// What the native About panel shows: name, version, copyright, credits and the colour icon.
 pub fn about_metadata() -> AboutMetadata {
+    let (icon_rgba, width, height) = app_icon_rgba();
     AboutMetadata {
         name: Some(APP_NAME.to_string()),
         version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        copyright: Some("© 2026 Jonathan Tobe".to_string()),
+        credits: Some(
+            "A drop-down terminal for macOS.\n\nBuilt with Rust, tao, wry and xterm.js.\nMIT licensed."
+                .to_string(),
+        ),
+        icon: Some(
+            AboutIcon::from_rgba(icon_rgba, width, height).expect("the app icon matches its size"),
+        ),
         ..Default::default()
     }
 }
@@ -152,9 +194,23 @@ mod tests {
     }
 
     #[test]
+    fn app_icon_decodes_to_rgba_pixels() {
+        let (rgba, width, height) = app_icon_rgba();
+        assert_eq!((width, height), (1024, 1024));
+        assert_eq!(rgba.len(), (width * height * 4) as usize);
+        assert!(rgba.chunks(4).any(|pixel| pixel[3] != 0));
+    }
+
+    #[test]
     fn about_metadata_uses_rake_brand() {
         let meta = about_metadata();
         assert_eq!(meta.name.as_deref(), Some("Rake"));
         assert_eq!(meta.version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+        assert_eq!(meta.copyright.as_deref(), Some("© 2026 Jonathan Tobe"));
+        assert!(meta
+            .credits
+            .as_deref()
+            .is_some_and(|credits| credits.contains("xterm.js")));
+        assert!(meta.icon.is_some());
     }
 }

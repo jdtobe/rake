@@ -13,6 +13,7 @@ global-hotkey = "0.9.0"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSColor", "NSColorSpace", "NSEvent", "NSFont", "NSPasteboard", "NSWindow", "NSScreen", "NSResponder"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSKeyedArchiver", "NSString", "NSUserDefaults"] }
+png = "0.18"
 portable-pty = "0.9"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"

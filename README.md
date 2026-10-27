@@ -12,6 +12,7 @@ Rake is a macOS-first Quake-style drop-down terminal written in Rust. Press a ho
 |---|---|
 | Menubar icon with **About** and **Quit** | Working (macOS); template mark, tinted by the system |
 | Left-click on the menubar icon | Toggles the panel; right-click opens the menu |
+| **About** panel | Native panel with the colour app icon, version, copyright and credits |
 | Global hotkey | Working |
 | Drop-down window at the top of the screen | Working; opens on the display under the mouse and shows on every Space |
 | Slide animation | Working; short hitch at the start of each slide in |
