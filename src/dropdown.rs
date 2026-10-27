@@ -11,7 +11,7 @@ use tao::window::{Window, WindowBuilder, WindowId};
 
 use crate::animation::Slide;
 use crate::config::Config;
-use crate::geometry::{window_rect, Rect};
+use crate::geometry::{window_rect, Display, Rect};
 use crate::terminal_protocol::TerminalEvent;
 use crate::terminal_view::TerminalView;
 use crate::theme::TerminalTheme;
@@ -24,9 +24,11 @@ use crate::APP_NAME;
 #[cfg(target_os = "macos")]
 mod macos {
     use objc2::MainThreadMarker;
-    use objc2_app_kit::{NSApplication, NSWindow};
+    use objc2_app_kit::{NSApplication, NSEvent, NSScreen, NSWindow, NSWindowCollectionBehavior};
     use tao::platform::macos::WindowExtMacOS;
     use tao::window::Window;
+
+    use crate::geometry::{display_from_frame, screen_at, Display, ScreenFrame};
 
     /// `NSMainMenuWindowLevel`. One level lower (23) is clamped; one higher (25, status) draws
     /// over the menubar.
@@ -37,10 +39,52 @@ mod macos {
         unsafe { &*window.ns_window().cast::<NSWindow>() }
     }
 
-    pub fn raise_to_menubar_level(window: &Window) {
+    pub fn configure_panel(window: &Window) {
         let window = ns_window(window);
         window.setLevel(MENUBAR_LEVEL);
         window.setHidesOnDeactivate(false);
+        // The panel belongs to a display, not a Space: show it on every Space and beside
+        // full-screen apps, so the hotkey works wherever that display currently is.
+        let behavior = window.collectionBehavior()
+            | NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::FullScreenAuxiliary;
+        window.setCollectionBehavior(behavior);
+    }
+
+    /// The display under the mouse, in the physical coordinates the window uses.
+    pub fn display_under_cursor() -> Option<Display> {
+        let marker = MainThreadMarker::new()?;
+        let screens = NSScreen::screens(marker);
+        if screens.is_empty() {
+            return None;
+        }
+        let frames: Vec<ScreenFrame> = (0..screens.len())
+            .map(|index| screen_frame(&screens.objectAtIndex(index)))
+            .collect();
+        let cursor = NSEvent::mouseLocation();
+        let index = screen_at((cursor.x as f32, cursor.y as f32), &frames)?;
+        let screen = screens.objectAtIndex(index);
+        let frame = screen.frame();
+        let usable = screen.visibleFrame();
+        let top_inset =
+            (frame.origin.y + frame.size.height) - (usable.origin.y + usable.size.height);
+        let primary_height = screen_frame(&screens.objectAtIndex(0)).height;
+        Some(display_from_frame(
+            frames[index],
+            top_inset as f32,
+            screen.backingScaleFactor(),
+            primary_height,
+        ))
+    }
+
+    fn screen_frame(screen: &NSScreen) -> ScreenFrame {
+        let frame = screen.frame();
+        ScreenFrame {
+            x: frame.origin.x as f32,
+            y: frame.origin.y as f32,
+            width: frame.size.width as f32,
+            height: frame.size.height as f32,
+        }
     }
 
     pub fn focus(window: &Window) {
@@ -67,7 +111,13 @@ mod macos {
 mod macos {
     use tao::window::Window;
 
-    pub fn raise_to_menubar_level(_window: &Window) {}
+    use crate::geometry::Display;
+
+    pub fn configure_panel(_window: &Window) {}
+
+    pub fn display_under_cursor() -> Option<Display> {
+        None
+    }
 
     pub fn focus(window: &Window) {
         window.set_focus();
@@ -84,8 +134,8 @@ pub struct DropDown {
     width_percent: u8,
     height_percent: u8,
     animation: Duration,
-    /// Where the window rests while shown. Also where it is parked while hidden, so the next
-    /// `show` finds the same monitor.
+    /// Where the window rests while shown. Re-computed on every show from the display under
+    /// the cursor.
     home: Option<Rect>,
     /// Top edge of the window when parked fully above its monitor, in physical pixels.
     hidden_y: i32,
@@ -116,7 +166,7 @@ impl DropDown {
             .with_visible(false)
             .build(target)
             .map_err(|e| format!("could not create window: {e}"))?;
-        macos::raise_to_menubar_level(&window);
+        macos::configure_panel(&window);
         let window = Rc::new(window);
         let terminal = TerminalView::new(&window, theme, ipc)?;
         Ok(DropDown {
@@ -143,29 +193,47 @@ impl DropDown {
         self.slide.is_some()
     }
 
-    /// Slide the window in from above the top of its monitor, then focus it. If it is partway
-    /// out, it reverses from where it is.
+    /// The display under the cursor, or the window's current monitor if the platform cannot
+    /// answer.
+    fn display_under_cursor(&self) -> Option<Display> {
+        macos::display_under_cursor().or_else(|| {
+            let monitor = self
+                .window
+                .current_monitor()
+                .or_else(|| self.window.primary_monitor())?;
+            let position = monitor.position();
+            let size = monitor.size();
+            Some(Display {
+                position: (position.x, position.y),
+                size: (size.width, size.height),
+                top_inset: macos::top_inset_px(&self.window),
+            })
+        })
+    }
+
+    /// Slide the window in on the display under the cursor, then focus it. If it is partway
+    /// out, it reverses on the display it is already on.
     pub fn show(&mut self, now: Instant) {
-        let monitor = self
-            .window
-            .current_monitor()
-            .or_else(|| self.window.primary_monitor());
-        let Some(monitor) = monitor else {
-            self.window.set_visible(true);
-            self.window.set_focus();
-            return;
+        let home = match (self.visible, self.home) {
+            (true, Some(home)) => home,
+            _ => {
+                let Some(display) = self.display_under_cursor() else {
+                    self.window.set_visible(true);
+                    self.window.set_focus();
+                    return;
+                };
+                let home = window_rect(
+                    display.position,
+                    display.size,
+                    display.top_inset,
+                    self.width_percent,
+                    self.height_percent,
+                );
+                self.hidden_y = display.position.1 - home.height as i32;
+                home
+            }
         };
-        let position = monitor.position();
-        let size = monitor.size();
-        let home = window_rect(
-            (position.x, position.y),
-            (size.width, size.height),
-            macos::top_inset_px(&self.window),
-            self.width_percent,
-            self.height_percent,
-        );
         self.home = Some(home);
-        self.hidden_y = position.y - home.height as i32;
         self.window
             .set_inner_size(PhysicalSize::new(home.width, home.height));
 
@@ -229,7 +297,7 @@ impl DropDown {
             self.hiding = false;
             self.visible = false;
             self.window.set_visible(false);
-            // Park at the resting spot so the next show finds the same monitor.
+            // Park at the resting spot; nothing is visible while hidden.
             self.y = home.y;
             self.window
                 .set_outer_position(PhysicalPosition::new(home.x, home.y));

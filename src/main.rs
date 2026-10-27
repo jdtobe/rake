@@ -1,4 +1,5 @@
-//! Menubar app: a tray icon with About and Quit, plus a global show/hide hotkey.
+//! Menubar app: a tray icon that toggles the panel (right-click for About and Quit), plus a
+//! global show/hide hotkey.
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
 use rake::clipboard;
@@ -16,14 +17,27 @@ use tao::event_loop::{ControlFlow, EventLoopBuilder};
 #[cfg(target_os = "macos")]
 use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
 use tray_icon::menu::{Menu, PredefinedMenuItem};
-use tray_icon::{TrayIcon, TrayIconBuilder};
+use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 /// Events other threads forward into the single `tao` event loop.
 #[derive(Debug)]
 enum AppEvent {
     Hotkey(GlobalHotKeyEvent),
+    TrayClick,
     TerminalRequest(String),
     Terminal(TerminalEvent),
+}
+
+/// Show or hide the panel, keeping the tracked state and the window in step.
+fn toggle(visibility: &mut Visibility, dropdown: &mut Option<DropDown>) {
+    *visibility = visibility.toggled();
+    if let Some(dropdown) = dropdown.as_mut() {
+        let now = Instant::now();
+        match *visibility {
+            Visibility::Shown => dropdown.show(now),
+            Visibility::Hidden => dropdown.hide(now),
+        }
+    }
 }
 
 /// Report an unrecoverable startup problem and exit.
@@ -78,6 +92,7 @@ fn main() {
             Event::NewEvents(StartCause::Init) => {
                 let builder = TrayIconBuilder::new()
                     .with_menu(Box::new(menu.clone()))
+                    .with_menu_on_left_click(false)
                     .with_tooltip(APP_NAME);
                 // Template icons are recoloured by macOS for light/dark menubars.
                 #[cfg(target_os = "macos")]
@@ -85,6 +100,21 @@ fn main() {
                 #[cfg(not(target_os = "macos"))]
                 let builder = builder.with_icon(build_icon());
                 tray = Some(builder.build().expect("failed to create tray icon"));
+
+                // Left-click toggles the panel; the right-click menu stays native.
+                let tray_proxy = proxy.clone();
+                TrayIconEvent::set_event_handler(Some(move |event| {
+                    if matches!(
+                        event,
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        }
+                    ) {
+                        let _ = tray_proxy.send_event(AppEvent::TrayClick);
+                    }
+                }));
 
                 let manager = GlobalHotKeyManager::new().expect("failed to start hotkey manager");
                 if let Err(e) = manager.register(hotkey) {
@@ -119,13 +149,10 @@ fn main() {
             Event::UserEvent(AppEvent::Hotkey(e))
                 if e.id() == hotkey.id() && should_toggle(e.state()) =>
             {
-                visibility = visibility.toggled();
-                if let Some(dropdown) = &mut dropdown {
-                    match visibility {
-                        Visibility::Shown => dropdown.show(Instant::now()),
-                        Visibility::Hidden => dropdown.hide(Instant::now()),
-                    }
-                }
+                toggle(&mut visibility, &mut dropdown);
+            }
+            Event::UserEvent(AppEvent::TrayClick) => {
+                toggle(&mut visibility, &mut dropdown);
             }
             Event::UserEvent(AppEvent::TerminalRequest(body)) => match parse_request(&body) {
                 Ok(TerminalRequest::Ready) => {
