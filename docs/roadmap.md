@@ -18,6 +18,7 @@ Rake is a fast, native, always-available terminal that drops down from the top o
 - Show over full-screen apps and on every Space (done for the display under the mouse)
 - Appear on the display that holds the focused window, as an alternative to the mouse
 - Tabs or splits (only if wanted; not assumed)
+- Signed and notarised releases (the DMG ships ad-hoc signed until then)
 - Linux and Windows support
 
 **Non-goals for now**
@@ -35,6 +36,7 @@ Each milestone is a small, shippable slice built test-first (see [principles](pr
 5. **Terminal (done):** one persistent default login shell in a PTY, rendered by bundled xterm.js in a WKWebView, with WebGL and a DOM fallback. Hiding preserves the process and scrollback; shell exit leaves the completed terminal visible. Typing, colours, `vim` and `top`, `Ctrl+C`, clipboard, 100,000 lines of output, hide/show and exit were checked by hand on macOS. The panel stays at its configured size; drag-resizing is not implemented.
 6. **Config:** user-editable settings with sensible defaults. The hotkey is done via the config file; the rest of the settings and the in-app Settings menu follow.
 7. **Polish (partly done):** the panel opens on the display under the mouse, is present on every Space, and joins full-screen apps. Remaining: focus behavior and the start-of-slide hitch.
-8. **Cross-platform:** Linux and Windows.
+8. **Release (partly done):** `scripts/package.sh` builds `Rake.app` and a DMG, and the release workflow publishes it. Signing and notarisation wait for an Apple Developer account.
+9. **Cross-platform:** Linux and Windows.
 
 Milestones 1 to 5 form the first usable single-session terminal. Next is the in-app Settings menu (milestone 6), then polish (milestone 7). Tabs and profiles follow once there are concrete settings to group.

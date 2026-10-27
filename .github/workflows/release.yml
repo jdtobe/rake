@@ -63,19 +63,16 @@ jobs:
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          name="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name')"
-          archive="dist/${name}-${TAG}-$(uname -m)-apple-darwin.tar.gz"
-          mkdir -p dist
-          tar -czf "${archive}" -C target/release "${name}"
-          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+          dmg="$(scripts/package.sh "${TAG}")"
+          echo "dmg=${dmg}" >> "$GITHUB_OUTPUT"
 
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
-          ARCHIVE: ${{ steps.package.outputs.archive }}
+          DMG: ${{ steps.package.outputs.dmg }}
         run: |
-          gh release create "${TAG}" "${ARCHIVE}" \
+          gh release create "${TAG}" "${DMG}" \
             --title "${TAG}" \
             --generate-notes \
             --target "${GITHUB_SHA}"

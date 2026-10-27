@@ -26,6 +26,10 @@ Rake is a macOS-first Quake-style drop-down terminal written in Rust. Press a ho
 
 Developed and tested on macOS only.
 
+## Install
+
+Download the latest `Rake-v….dmg`, open it and drag **Rake** onto **Applications**. The build is ad-hoc signed and not notarised, so the first launch needs Finder: right-click **Rake** and choose **Open** (macOS remembers the choice). Releases are manual; there is no auto-update.
+
 ## Run it
 
 ```bash
@@ -74,7 +78,9 @@ Requires a stable Rust toolchain.
 Every push runs formatting, lints and tests on macOS in CI; pull requests run the same
 checks across all targets and the doc tests. Releases are cut by hand from the Actions
 tab, never on merge, and are tagged `v{YY}.{month}.{build}` (the first release of
-October 2026 is `v26.10.0`).
+October 2026 is `v26.10.0`). A release publishes `Rake-v….dmg`, built by
+`scripts/package.sh`; run that script after `cargo build --release` to make the same
+artefact locally.
 
 ## Contributing
 
