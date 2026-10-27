@@ -6,6 +6,7 @@ pub mod config;
 pub mod dropdown;
 pub mod geometry;
 pub mod hotkey;
+pub mod instance;
 pub mod pty;
 pub mod terminal_profile;
 pub mod terminal_protocol;

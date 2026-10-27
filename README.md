@@ -13,6 +13,7 @@ Rake is a macOS-first Quake-style drop-down terminal written in Rust. Press a ho
 | Menubar icon with **About** and **Quit** | Working (macOS); template mark, tinted by the system |
 | Left-click on the menubar icon | Toggles the panel; right-click opens the menu |
 | **About** panel | Native panel with the colour app icon, version, copyright and credits |
+| One running copy | A second launch brings the existing panel forward and exits |
 | Global hotkey | Working |
 | Drop-down window at the top of the screen | Working; opens on the display under the mouse and shows on every Space |
 | Slide animation | Working; short hitch at the start of each slide in |
@@ -32,6 +33,8 @@ cargo run
 ```
 
 Rake opens and focuses a terminal backed by your default login shell. The panel appears on the display under the mouse and stays there until hidden; the next show chooses again. The shell remains alive when the hotkey hides the window. An icon also appears in the menubar (no Dock icon): left-click toggles the panel, right-click opens **About** and **Quit**.
+
+Only one copy runs. Launching Rake again, from Finder or the binary, brings the existing panel forward and exits the new process, so quit the running copy before `cargo run`.
 
 ## Configure
 

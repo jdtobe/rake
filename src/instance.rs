@@ -1,0 +1,164 @@
+//! One running copy per user, with a way for a second launch to ask it to show.
+//!
+//! The kernel holds the lock, not the file: a crash, a force quit or a reboot releases it,
+//! so a leftover lock file never keeps Rake from starting. The socket lives beside the lock
+//! and only the lock holder binds it, which gives the second launch a way to wake the panel.
+
+use std::fs::{File, TryLockError};
+use std::io::{self, Write};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
+
+pub const LOCK_FILE: &str = "instance.lock";
+pub const SOCKET_FILE: &str = "instance.sock";
+
+/// How long a second launch waits for the first to bind its socket.
+const CONNECT_ATTEMPTS: u32 = 20;
+const CONNECT_PAUSE: Duration = Duration::from_millis(25);
+
+/// Where Rake keeps its instance lock and socket, next to the configuration for the same user.
+pub fn state_dir(home: &Path) -> PathBuf {
+    home.join("Library/Application Support/Rake")
+}
+
+/// The running copy's claim on the app. Dropping it releases the lock and removes the socket.
+pub struct Instance {
+    _lock: File,
+    socket: PathBuf,
+}
+
+/// Try to become the one running copy. `Ok(None)` means another copy already holds the lock.
+pub fn claim(dir: &Path) -> io::Result<Option<Instance>> {
+    std::fs::create_dir_all(dir)?;
+    let lock = File::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(dir.join(LOCK_FILE))?;
+    match lock.try_lock() {
+        Ok(()) => Ok(Some(Instance {
+            _lock: lock,
+            socket: dir.join(SOCKET_FILE),
+        })),
+        Err(TryLockError::WouldBlock) => Ok(None),
+        Err(TryLockError::Error(error)) => Err(error),
+    }
+}
+
+impl Instance {
+    /// Answer show requests on the socket, calling `on_show` for each one. The listener
+    /// thread runs for the life of the process.
+    pub fn listen<F>(&self, on_show: F) -> io::Result<()>
+    where
+        F: Fn() + Send + 'static,
+    {
+        // A previous copy may have died without cleaning up its socket.
+        let _ = std::fs::remove_file(&self.socket);
+        let listener = UnixListener::bind(&self.socket)?;
+        thread::spawn(move || {
+            for _ in listener.incoming().flatten() {
+                on_show();
+            }
+        });
+        Ok(())
+    }
+}
+
+/// Ask the running copy to show its panel. Retries briefly in case it has not bound yet.
+pub fn request_show(dir: &Path) -> io::Result<()> {
+    let socket = dir.join(SOCKET_FILE);
+    let mut last_error = None;
+    for _ in 0..CONNECT_ATTEMPTS {
+        match UnixStream::connect(&socket) {
+            Ok(mut stream) => return stream.write_all(b"show"),
+            Err(error) => {
+                last_error = Some(error);
+                thread::sleep(CONNECT_PAUSE);
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| io::Error::other("no socket")))
+}
+
+impl Drop for Instance {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.socket);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("the clock is past the epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("rake-{name}-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    #[test]
+    fn only_one_claim_wins_and_dropping_it_releases_the_lock() {
+        let dir = temp_dir("claim");
+
+        let first = claim(&dir).expect("claim").expect("first claim wins");
+        assert!(
+            claim(&dir).expect("claim").is_none(),
+            "a second copy is refused"
+        );
+
+        drop(first);
+        assert!(
+            claim(&dir).expect("claim").is_some(),
+            "the lock is released with the claim"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_second_launch_wakes_the_running_copy() {
+        let dir = temp_dir("listen");
+        let held = claim(&dir).expect("claim").expect("first claim wins");
+        let (sender, receiver) = mpsc::channel();
+        held.listen(move || {
+            let _ = sender.send(());
+        })
+        .expect("listen");
+
+        request_show(&dir).expect("request");
+        receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("the show request arrives");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn listening_replaces_a_stale_socket() {
+        let dir = temp_dir("stale");
+        let held = claim(&dir).expect("claim").expect("first claim wins");
+        std::fs::write(dir.join(SOCKET_FILE), b"stale").expect("stale socket file");
+
+        let (sender, receiver) = mpsc::channel();
+        held.listen(move || {
+            let _ = sender.send(());
+        })
+        .expect("listen over the stale file");
+
+        request_show(&dir).expect("request");
+        receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("the show request arrives");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}

@@ -6,6 +6,7 @@ use rake::clipboard;
 use rake::config::{self, Config};
 use rake::dropdown::DropDown;
 use rake::hotkey::{should_toggle, Visibility};
+use rake::instance;
 use rake::pty::{default_login_shell, PtySession, TerminalSize};
 use rake::terminal_profile;
 use rake::terminal_protocol::{parse_request, TerminalEvent, TerminalRequest};
@@ -24,6 +25,7 @@ use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIc
 enum AppEvent {
     Hotkey(GlobalHotKeyEvent),
     TrayClick,
+    ShowRequest,
     TerminalRequest(String),
     Terminal(TerminalEvent),
 }
@@ -47,6 +49,20 @@ fn fail(message: &str) -> ! {
 }
 
 fn main() {
+    // One copy per user: a second launch asks the running one to show and exits.
+    let state_dir = match std::env::var_os("HOME") {
+        Some(home) => instance::state_dir(Path::new(&home)),
+        None => std::env::temp_dir().join("rake"),
+    };
+    let instance = match instance::claim(&state_dir) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            let _ = instance::request_show(&state_dir);
+            return;
+        }
+        Err(error) => fail(&format!("could not guard against a second copy: {error}")),
+    };
+
     let mut event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
 
     // Menubar-only app: no Dock icon.
@@ -66,6 +82,13 @@ fn main() {
     GlobalHotKeyEvent::set_event_handler(Some(move |event| {
         let _ = hotkey_proxy.send_event(AppEvent::Hotkey(event));
     }));
+
+    let show_proxy = proxy.clone();
+    if let Err(error) = instance.listen(move || {
+        let _ = show_proxy.send_event(AppEvent::ShowRequest);
+    }) {
+        fail(&format!("could not listen for a second launch: {error}"));
+    }
 
     let menu = Menu::new();
     menu.append_items(&[
@@ -153,6 +176,15 @@ fn main() {
             }
             Event::UserEvent(AppEvent::TrayClick) => {
                 toggle(&mut visibility, &mut dropdown);
+            }
+            // A second launch, whether through our socket or macOS reopening the app.
+            Event::UserEvent(AppEvent::ShowRequest) | Event::Reopen { .. } => {
+                if let Some(dropdown) = dropdown.as_mut() {
+                    visibility = Visibility::Shown;
+                    dropdown.show(Instant::now());
+                } else {
+                    show_on_launch = true;
+                }
             }
             Event::UserEvent(AppEvent::TerminalRequest(body)) => match parse_request(&body) {
                 Ok(TerminalRequest::Ready) => {
