@@ -32,9 +32,9 @@ Each milestone is a small, shippable slice built test-first (see [principles](pr
 2. **Hotkey (done):** a global hotkey fires an event in the existing event loop and toggles the visibility state. The default is `Ctrl+\``, and it is user-configurable via the TOML config file ([ADR 5](adr/0005-toml-config-read-at-startup.md)).
 3. **Window (done):** a borderless, always-on-top window appears at the top of the screen, centered, and disappears on the hotkey. It began with a dark placeholder and now hosts the terminal. Size is configurable (`width_percent`, `height_percent`), as is hiding on focus loss (`hide_on_focus_lost`).
 4. **Animation (done, small start-up hitch):** the window slides in from above the top edge and back out instead of popping. Toggling mid-slide reverses smoothly. Configurable with `animation_ms` ([ADR 6](adr/0006-animation-on-the-event-loop.md)).
-5. **Terminal (implemented, final manual validation pending):** one persistent default login shell in a PTY, rendered by bundled xterm.js in a WKWebView. Hiding preserves the process and scrollback; shell exit leaves the completed terminal visible.
+5. **Terminal (done):** one persistent default login shell in a PTY, rendered by bundled xterm.js in a WKWebView, with WebGL and a DOM fallback. Hiding preserves the process and scrollback; shell exit leaves the completed terminal visible. Typing, colours, `vim` and `top`, `Ctrl+C`, clipboard, 100,000 lines of output, hide/show and exit were checked by hand on macOS. The panel stays at its configured size; drag-resizing is not implemented.
 6. **Config:** user-editable settings with sensible defaults. The hotkey is done via the config file; the rest of the settings and the in-app Settings menu follow.
 7. **Polish:** full-screen Spaces, multi-monitor, focus behavior.
 8. **Cross-platform:** Linux and Windows.
 
-Milestones 1 to 5 form the first usable single-session terminal. Next is finishing its macOS interaction checklist, then the in-app Settings menu and polish. Tabs and profiles follow once there are concrete settings to group.
+Milestones 1 to 5 form the first usable single-session terminal. Next is the in-app Settings menu (milestone 6), then polish (milestone 7). Tabs and profiles follow once there are concrete settings to group.

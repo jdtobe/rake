@@ -6,17 +6,17 @@ Rake is a macOS-first Quake-style drop-down terminal written in Rust. Press a ho
 
 ## Status
 
-**Early. A first single-session terminal exists; interactive macOS acceptance testing is still in progress.**
+**Early. The first single-session terminal works on macOS; settings and polish are next.**
 
 | Capability | State |
 |---|---|
-| Menubar icon with **About** and **Quit** | Working (macOS) |
+| Menubar icon with **About** and **Quit** | Working (macOS); template mark, tinted by the system |
 | Global hotkey | Working |
 | Drop-down window at the top of the screen | Working |
 | Slide animation | Working; short hitch at the start of each slide in |
 | Configuration | Hotkey, window size, hide on focus lost, animation time (config file only) |
 | Settings menu in the menubar | Not started |
-| Embedded terminal (shell + rendering) | Working as one persistent login-shell session; final keyboard/clipboard checks pending |
+| Embedded terminal (shell + rendering) | Working as one persistent login-shell session; WebGL with a DOM fallback |
 | Terminal colours and font | Follows the macOS Terminal default profile; changes apply on restart |
 | Tabs and profiles | Planned after the single-session terminal is validated |
 | Linux / Windows | Not tested |
@@ -51,6 +51,8 @@ hide_on_focus_lost = false
 # Slide in/out time in milliseconds, 0 to 2000. 0 turns the animation off. Default: 300
 animation_ms = 300
 ```
+
+The panel opens at the configured size and cannot be resized by dragging.
 
 Hotkey strings use the [`global-hotkey`](https://docs.rs/global-hotkey) format, such as `Ctrl+Shift+K`, `Cmd+Backquote` or `F12`. Note that a global hotkey is captured system-wide, so the default `Ctrl+\`` will also stop working inside other apps that use it, such as editors.
 
