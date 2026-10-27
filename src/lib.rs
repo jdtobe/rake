@@ -15,19 +15,64 @@ pub mod theme;
 use tray_icon::menu::AboutMetadata;
 use tray_icon::Icon;
 
-pub const ICON_SIZE: u32 = 22;
+/// Pixel size of the menubar icon. The drawing grid is 22 units; drawing at twice that
+/// gives Retina real pixels, and the tray scales the image down to 22 points.
+pub const ICON_SIZE: u32 = 44;
+const ICON_SCALE: f32 = 2.0;
 pub const APP_NAME: &str = "Rake";
 
-/// RGBA pixels for the menubar icon: a solid square with a one-pixel transparent margin.
+/// RGBA pixels for the menubar icon: a filled bar above an outlined pane, black with alpha
+/// so macOS can use it as a template image and tint it for light and dark menubars.
 pub fn build_icon_rgba() -> Vec<u8> {
-    let edge = ICON_SIZE - 1;
-    (0..ICON_SIZE * ICON_SIZE)
-        .flat_map(|i| {
-            let (x, y) = (i % ICON_SIZE, i / ICON_SIZE);
-            let inside = x > 0 && y > 0 && x < edge && y < edge;
-            [0, 0, 0, if inside { 255 } else { 0 }]
-        })
-        .collect()
+    let mut rgba = Vec::with_capacity((ICON_SIZE * ICON_SIZE * 4) as usize);
+    for y in 0..ICON_SIZE {
+        for x in 0..ICON_SIZE {
+            rgba.extend_from_slice(&[0, 0, 0, coverage(x, y)]);
+        }
+    }
+    rgba
+}
+
+/// Antialiased coverage of the mark at one pixel, sampled 4x4 per pixel.
+fn coverage(x: u32, y: u32) -> u8 {
+    const SAMPLES: u32 = 4;
+    let mut hits = 0;
+    for sample_y in 0..SAMPLES {
+        for sample_x in 0..SAMPLES {
+            let px = (x as f32 + (sample_x as f32 + 0.5) / SAMPLES as f32) / ICON_SCALE;
+            let py = (y as f32 + (sample_y as f32 + 0.5) / SAMPLES as f32) / ICON_SCALE;
+            if inside_bar(px, py) || inside_pane(px, py) {
+                hits += 1;
+            }
+        }
+    }
+    ((255 * hits + SAMPLES * SAMPLES / 2) / (SAMPLES * SAMPLES)) as u8
+}
+
+/// Signed distance to a rounded rectangle, negative inside.
+fn rounded_rect_distance(
+    px: f32,
+    py: f32,
+    centre_x: f32,
+    centre_y: f32,
+    half_width: f32,
+    half_height: f32,
+    radius: f32,
+) -> f32 {
+    let qx = (px - centre_x).abs() - (half_width - radius);
+    let qy = (py - centre_y).abs() - (half_height - radius);
+    let outside = (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt();
+    outside + qx.max(qy).min(0.0) - radius
+}
+
+/// The menu bar edge: x 3.5..18.5, y 4.5..6.9 on the 22-unit grid.
+fn inside_bar(px: f32, py: f32) -> bool {
+    rounded_rect_distance(px, py, 11.0, 5.7, 7.5, 1.2, 1.2) <= 0.0
+}
+
+/// The pane outline: x 5.5..16.5, y 9..18, stroke 1.6 centred on the edge.
+fn inside_pane(px: f32, py: f32) -> bool {
+    rounded_rect_distance(px, py, 11.0, 13.5, 5.5, 4.5, 1.8).abs() <= 0.8
 }
 
 pub fn build_icon() -> Icon {
@@ -46,12 +91,53 @@ pub fn about_metadata() -> AboutMetadata {
 mod tests {
     use super::*;
 
+    /// Alpha at a point on the 22-unit drawing grid, sampled at its 2x pixel.
+    fn alpha_at_grid_point(data: &[u8], x: f32, y: f32) -> u8 {
+        let px = (x * ICON_SCALE) as u32;
+        let py = (y * ICON_SCALE) as u32;
+        data[((py * ICON_SIZE + px) * 4 + 3) as usize]
+    }
+
     #[test]
     fn icon_rgba_has_expected_length() {
         assert_eq!(
             build_icon_rgba().len(),
             (ICON_SIZE * ICON_SIZE * 4) as usize
         );
+    }
+
+    #[test]
+    fn icon_is_drawn_at_two_times_for_retina() {
+        // 44 pixels over the 22-unit grid; the tray scales it down to 22 points.
+        assert_eq!(build_icon_rgba().len(), (44 * 44 * 4) as usize);
+    }
+
+    #[test]
+    fn icon_draws_the_bar_at_the_top() {
+        let data = build_icon_rgba();
+        assert_eq!(alpha_at_grid_point(&data, 11.0, 5.7), 255);
+    }
+
+    #[test]
+    fn icon_leaves_the_gap_between_bar_and_pane_empty() {
+        let data = build_icon_rgba();
+        assert_eq!(alpha_at_grid_point(&data, 11.0, 7.5), 0);
+    }
+
+    #[test]
+    fn icon_outlines_the_pane() {
+        let data = build_icon_rgba();
+        assert_eq!(alpha_at_grid_point(&data, 11.0, 9.0), 255);
+        assert_eq!(alpha_at_grid_point(&data, 11.0, 13.5), 0);
+    }
+
+    #[test]
+    fn icon_uses_only_black_for_template_tinting() {
+        for pixel in build_icon_rgba().chunks(4) {
+            if pixel[3] != 0 {
+                assert_eq!(&pixel[..3], &[0, 0, 0]);
+            }
+        }
     }
 
     #[test]

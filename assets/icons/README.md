@@ -20,7 +20,7 @@ The accent is amber `#e9a13b` on charcoal `#1c1c1c`, with the pane in `#d0d0d0`
 macOS tints a template image itself: black on a light menubar, white on a dark
 one, so there is no white asset to keep.
 
-The menubar icon in `src/lib.rs` (`build_icon_rgba`) still draws the placeholder
-square. Wiring the mark in means drawing the bar and pane into the RGBA buffer,
-or embedding `menubar-44.png`; the `.icns` is unused until Rake ships as an
-`.app` bundle.
+`src/lib.rs` (`build_icon_rgba`) draws the same geometry at 44x44 pixels, twice
+the 22-unit grid, so Retina screens get real pixels; `tray-icon` scales it to 22
+points and marks it as a template. The committed PNGs remain the visual
+reference, and the `.icns` is unused until Rake ships as an `.app` bundle.
