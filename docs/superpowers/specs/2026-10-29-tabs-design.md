@@ -1,7 +1,7 @@
 # Tabs as independent workspaces
 
 Date: 2026-10-29
-Status: Reviewed draft — awaiting user approval
+Status: Approved by user on 2026-10-29
 
 ## Intent and priority
 
@@ -45,7 +45,7 @@ This is a macOS implementation; do not claim support for other platforms.
 Normal shell history files still behave as configured by the user's shell;
 "no history restored" means Rake does not capture or replay history.
 
-## Builder decisions proposed for approval
+## Approved builder decisions
 
 ### Session model and ownership
 
@@ -118,7 +118,9 @@ visible retryable error, not a crash or accidental quit.
 Closing the active tab selects the tab to its right, otherwise its left neighbour.
 Closing an inactive tab preserves selection. Cycling wraps. Cmd+1–8 selects those
 positions; Cmd+9 selects the last tab. Missing positions do nothing. Drag reordering
-is deferred; preserve creation order apart from removals.
+is wanted follow-up work, deferred from this milestone; preserve creation order
+apart from removals. IDs remain independent of order so reordering can be added
+without changing session identity.
 
 Manual rename accepts text, trims surrounding whitespace and treats empty text as
 automatic. Escape cancels; Enter saves. Render title strings as text, never HTML;
@@ -193,5 +195,6 @@ has not been authorised by approving this feature design.
 - [x] Inspect existing PTY/webview/protocol architecture.
 - [x] Draft complete design with builder decisions marked.
 - [x] Independent builder review: no important unanswered questions.
-- [ ] Present design to user for approval.
-- [ ] After approval, write implementation plan before product changes.
+- [x] Present design to user for approval.
+- [x] After approval, write implementation plan before product changes
+  ([plan](../plans/2026-10-29-tabs.md)).
