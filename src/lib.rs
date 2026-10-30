@@ -125,7 +125,7 @@ pub fn about_metadata() -> AboutMetadata {
     let (icon_rgba, width, height) = app_icon_rgba();
     AboutMetadata {
         name: Some(APP_NAME.to_string()),
-        version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        version: Some(format!("v{}", env!("CARGO_PKG_VERSION"))),
         copyright: Some("© 2026 Jonathan Tobe".to_string()),
         credits: Some(
             "A drop-down terminal for macOS.\n\nBuilt with Rust, tao, wry and xterm.js.\nMIT licensed."
@@ -214,7 +214,10 @@ mod tests {
     fn about_metadata_uses_rake_brand() {
         let meta = about_metadata();
         assert_eq!(meta.name.as_deref(), Some("Rake"));
-        assert_eq!(meta.version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+        assert_eq!(
+            meta.version,
+            Some(format!("v{}", env!("CARGO_PKG_VERSION")))
+        );
         assert_eq!(meta.copyright.as_deref(), Some("© 2026 Jonathan Tobe"));
         assert!(meta
             .credits
