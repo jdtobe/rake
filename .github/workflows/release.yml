@@ -26,6 +26,14 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Browser dependencies
+        run: |
+          npm ci
+          npx playwright install webkit
 
       - name: Check the branch
         run: |
@@ -40,6 +48,7 @@ jobs:
           cargo clippy --all-targets -- -D warnings
           cargo test --all-targets
           cargo test --doc
+          npm test
 
       - name: Work out the version
         id: version

@@ -6,7 +6,7 @@ Rake is a macOS-first Quake-style drop-down terminal written in Rust. Press a ho
 
 ## Status
 
-**Early. The first single-session terminal works on macOS; settings and polish are next.**
+**Early. Independent terminal tabs are implemented on macOS; native hands-on acceptance is pending.**
 
 | Capability | State |
 |---|---|
@@ -19,9 +19,10 @@ Rake is a macOS-first Quake-style drop-down terminal written in Rust. Press a ho
 | Slide animation | Working; short hitch at the start of each slide in |
 | Configuration | Hotkey, window size, hide on focus lost, animation time (config file only) |
 | Settings menu in the menubar | Not started |
-| Embedded terminal (shell + rendering) | Working as one persistent login-shell session; WebGL with a DOM fallback |
+| Embedded terminal (shell + rendering) | Independent persistent login-shell sessions; active-tab WebGL with a DOM fallback |
 | Terminal colours and font | Follows the macOS Terminal default profile; changes apply on restart |
-| Tabs and profiles | Planned after the single-session terminal is validated |
+| Tabs | Bottom/top strip, names, cwd inheritance, close/quit confirmation, optional layout restoration |
+| Profiles | Later; terminal colours still follow the Terminal default profile |
 | Linux / Windows | Not tested |
 
 Developed and tested on macOS only.
@@ -39,6 +40,36 @@ cargo run
 Rake opens and focuses a terminal backed by your default login shell. The panel appears on the display under the mouse and stays there until hidden; the next show chooses again. The shell remains alive when the hotkey hides the window. An icon also appears in the menubar (no Dock icon): left-click toggles the panel, right-click opens **About** and **Quit**.
 
 Only one copy runs. Launching Rake again, from Finder or the binary, brings the existing panel forward and exits the new process, so quit the running copy before `cargo run`.
+
+## Tabs
+
+Each tab keeps its own shell, screen and scrollback alive. Click **+**, or use
+**File → New Tab**. Double-click a tab name to set a manual title; clear it to
+return to automatic shell/program titles (directory name when no title is supplied).
+Manual titles ignore shell title updates until cleared. Reordering is wanted
+follow-up work, not implemented yet.
+
+| Shortcut | Action |
+|---|---|
+| Cmd+T | New tab in the current tab's local directory |
+| Cmd+W | Close tab |
+| Cmd+1–8 | Select numbered tab |
+| Cmd+9 | Select last tab |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
+| Cmd+Q | Quit Rake |
+
+Closing a tab or quitting asks before terminating running apps, including
+background/stopped jobs; uncertain process inspection also asks. Cancellation
+keeps sessions alive. In-app menu/keyboard quit routes share this check, but
+macOS logout/shutdown, Force Quit and external signals cannot guarantee a prompt.
+Cleanup targets the local session tree, not deliberately detached/reparented daemons.
+
+Startup defaults to one new tab. Opt-in restoration recreates tab order, names,
+selection and local directories with **fresh shells**, never SSH reconnections,
+running commands or scrollback. Rake does not restore command history; the shell's
+normal history files still work. Saved layout lives in
+`~/Library/Application Support/Rake/tabs.json`. Missing directories fall back to
+home with a notice.
 
 ## Configure
 
@@ -59,6 +90,17 @@ hide_on_focus_lost = false
 
 # Slide in/out time in milliseconds, 0 to 2000. 0 turns the animation off. Default: 300
 animation_ms = 300
+
+# Tab strip placement: bottom (default) or top.
+tab_position = "bottom"
+# New shell directory: current (default) or home. SSH remains local.
+new_tab_directory = "current"
+# Startup: new (default) or restore the previous layout with fresh shells.
+startup_tabs = "new"
+# Last tab closed: new (default), hide, or quit. Hidden-empty summons create a tab.
+last_tab_action = "new"
+# Rake controls only: system (default), light or dark. Terminal profile is separate.
+appearance = "system"
 ```
 
 The panel opens at the configured size and cannot be resized by dragging.
@@ -74,6 +116,17 @@ cargo fmt
 ```
 
 Requires a stable Rust toolchain.
+
+Browser tests require Node 22 and the pinned Playwright WebKit build:
+
+```bash
+npm ci
+npx playwright install webkit
+npm test
+```
+
+See [tabs acceptance checks](docs/testing/tabs.md) for automated evidence and
+remaining native hand checks. These tools are development-only, not shipped in the app.
 
 Every push runs formatting, lints and tests on macOS in CI; pull requests run the same
 checks across all targets and the doc tests. Releases are cut by hand from the Actions

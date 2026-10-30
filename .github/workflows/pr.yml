@@ -21,6 +21,14 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Browser dependencies
+        run: |
+          npm ci
+          npx playwright install webkit
       - name: Formatting
         run: cargo fmt --check
       - name: Lints, including test targets
@@ -29,3 +37,5 @@ jobs:
         run: cargo test --all-targets
       - name: Documentation tests
         run: cargo test --doc
+      - name: Terminal browser tests
+        run: npm test
