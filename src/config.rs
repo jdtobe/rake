@@ -9,6 +9,20 @@ use serde::Deserialize;
 
 use crate::hotkey::{parse_hotkey, DEFAULT_HOTKEY};
 
+macro_rules! setting_enum {
+    ($name:ident, $default:ident $(, $other:ident)*) => {
+        #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        pub enum $name { #[default] $default, $($other),* }
+    };
+}
+
+setting_enum!(TabPosition, Bottom, Top);
+setting_enum!(NewTabDirectory, Current, Home);
+setting_enum!(StartupTabs, New, Restore);
+setting_enum!(LastTabAction, New, Hide, Quit);
+setting_enum!(Appearance, System, Light, Dark);
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
@@ -21,6 +35,11 @@ pub struct Config {
     pub hide_on_focus_lost: bool,
     /// How long the slide in/out takes, in milliseconds. 0 turns the animation off.
     pub animation_ms: u32,
+    pub tab_position: TabPosition,
+    pub new_tab_directory: NewTabDirectory,
+    pub startup_tabs: StartupTabs,
+    pub last_tab_action: LastTabAction,
+    pub appearance: Appearance,
 }
 
 pub const ANIMATION_MS_MAX: u32 = 2000;
@@ -36,6 +55,11 @@ impl Default for Config {
             width_percent: 100,
             hide_on_focus_lost: false,
             animation_ms: 300,
+            tab_position: TabPosition::default(),
+            new_tab_directory: NewTabDirectory::default(),
+            startup_tabs: StartupTabs::default(),
+            last_tab_action: LastTabAction::default(),
+            appearance: Appearance::default(),
         }
     }
 }
@@ -93,6 +117,38 @@ pub fn load(path: &Path) -> Result<Config, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tab_settings_default_and_accept_all_alternatives() {
+        let cfg = Config::from_toml_str("").unwrap();
+        assert_eq!(cfg.tab_position, TabPosition::Bottom);
+        assert_eq!(cfg.new_tab_directory, NewTabDirectory::Current);
+        assert_eq!(cfg.startup_tabs, StartupTabs::New);
+        assert_eq!(cfg.last_tab_action, LastTabAction::New);
+        assert_eq!(cfg.appearance, Appearance::System);
+        let cfg = Config::from_toml_str("tab_position='top'\nnew_tab_directory='home'\nstartup_tabs='restore'\nlast_tab_action='hide'\nappearance='light'").unwrap();
+        assert_eq!(cfg.tab_position, TabPosition::Top);
+        assert_eq!(cfg.startup_tabs, StartupTabs::Restore);
+        assert_eq!(cfg.last_tab_action, LastTabAction::Hide);
+        assert_eq!(cfg.appearance, Appearance::Light);
+        assert_eq!(
+            Config::from_toml_str("last_tab_action='quit'\nappearance='dark'")
+                .unwrap()
+                .appearance,
+            Appearance::Dark
+        );
+        for key in [
+            "tab_position",
+            "new_tab_directory",
+            "startup_tabs",
+            "last_tab_action",
+            "appearance",
+        ] {
+            assert!(Config::from_toml_str(&format!("{key}='bogus'"))
+                .unwrap_err()
+                .contains(key));
+        }
+    }
 
     fn temp_file(name: &str, contents: Option<&str>) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("rake-test-{}-{name}", std::process::id()));

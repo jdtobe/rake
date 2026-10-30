@@ -1,17 +1,25 @@
 //! Pure helpers for the menubar app, kept separate from the event loop so they can be unit tested.
 
 pub mod animation;
+pub mod app_ui;
 pub mod clipboard;
+pub mod close_policy;
 pub mod config;
 pub mod dropdown;
 pub mod geometry;
 pub mod hotkey;
 pub mod instance;
+pub mod process;
 pub mod pty;
+pub mod session_output;
+pub mod sessions;
+pub mod tab_layout;
+pub mod tabs;
 pub mod terminal_profile;
 pub mod terminal_protocol;
 pub mod terminal_view;
 pub mod theme;
+pub mod workspace;
 
 use tray_icon::menu::AboutMetadata;
 use tray_icon::menu::Icon as AboutIcon;
@@ -117,7 +125,7 @@ pub fn about_metadata() -> AboutMetadata {
     let (icon_rgba, width, height) = app_icon_rgba();
     AboutMetadata {
         name: Some(APP_NAME.to_string()),
-        version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        version: Some(format!("v{}", env!("CARGO_PKG_VERSION"))),
         copyright: Some("© 2026 Jonathan Tobe".to_string()),
         credits: Some(
             "A drop-down terminal for macOS.\n\nBuilt with Rust, tao, wry and xterm.js.\nMIT licensed."
@@ -206,7 +214,10 @@ mod tests {
     fn about_metadata_uses_rake_brand() {
         let meta = about_metadata();
         assert_eq!(meta.name.as_deref(), Some("Rake"));
-        assert_eq!(meta.version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+        assert_eq!(
+            meta.version,
+            Some(format!("v{}", env!("CARGO_PKG_VERSION")))
+        );
         assert_eq!(meta.copyright.as_deref(), Some("© 2026 Jonathan Tobe"));
         assert!(meta
             .credits

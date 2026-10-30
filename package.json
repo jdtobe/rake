@@ -1,0 +1,6 @@
+{
+  "name": "rake-terminal-tests",
+  "private": true,
+  "scripts": { "test": "playwright test --project=webkit" },
+  "devDependencies": { "@playwright/test": "1.56.1" }
+}

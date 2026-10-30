@@ -1,0 +1,36 @@
+name: Dependency security
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 8 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: security
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Rust advisories (all lockfile targets)
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked --root "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/cargo-audit" audit
+      - name: npm advisories (including development dependencies)
+        if: success() || failure()
+        run: |
+          npm ci --ignore-scripts
+          npm audit

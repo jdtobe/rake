@@ -1,0 +1,20 @@
+body { --bar-bg:#efefef; --tab-fg:#4d4d4d; --tab-active:#fff; --tab-border:#ccc; --tab-focus:#986010; }
+body[data-appearance="dark"] { --bar-bg:#242424; --tab-fg:#c7c7c7; --tab-active:#1c1c1c; --tab-border:#424242; --tab-focus:#e9a13b; }
+@media (prefers-color-scheme:dark) { body[data-appearance="system"] { --bar-bg:#242424; --tab-fg:#c7c7c7; --tab-active:#1c1c1c; --tab-border:#424242; --tab-focus:#e9a13b; } }
+#tabstrip { display:flex; flex:none; height:35px; background:var(--bar-bg); color:var(--tab-fg); border-top:1px solid var(--tab-border); font:12px -apple-system,BlinkMacSystemFont,sans-serif; }
+body[data-tab-position="top"] #tabstrip { order:-1; border-top:0; border-bottom:1px solid var(--tab-border); }
+.tab-list { display:flex; min-width:0; overflow-x:auto; scrollbar-width:none; flex:1; }
+.tab-item { display:flex; flex:none; width:175px; position:relative; border-right:1px solid var(--tab-border); }
+.tab-item.active { background:var(--tab-active); }
+.tab-item.active::before { content:''; position:absolute; height:2px; top:0; left:6px; right:6px; background:#e9a13b; }
+body[data-tab-position="top"] .tab-item.active::before { top:auto; bottom:0; }
+#tabstrip button { color:inherit; background:none; border:0; font:inherit; cursor:pointer; }
+#tabstrip button:hover { background:color-mix(in srgb,var(--tab-fg) 10%,transparent); }
+#tabstrip button:focus-visible,.tab-name-editor:focus-visible { outline:2px solid var(--tab-focus); outline-offset:-3px; }
+.tab { flex:1; min-width:0; display:flex; align-items:center; gap:8px; padding:0 8px; text-align:left; }
+.tab-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tab-name-editor { width:100%; min-width:0; box-sizing:border-box; font:inherit; color:var(--tab-fg); background:var(--tab-active); border:1px solid var(--tab-border); padding:3px; }
+.busy { width:5px; height:5px; flex:none; border-radius:50%; background:currentColor; }
+#tabstrip .close-tab { flex:none; width:26px; font-size:17px; }
+#tabstrip .new-tab { flex:none; width:40px; font-size:24px; font-weight:500; border-left:1px solid var(--tab-border); }
+#notice { position:absolute; right:12px; bottom:46px; z-index:2; max-width:80%; padding:10px 14px; color:var(--tab-fg); background:var(--bar-bg); border:1px solid var(--tab-border); border-radius:5px; font:12px -apple-system,BlinkMacSystemFont,sans-serif; }

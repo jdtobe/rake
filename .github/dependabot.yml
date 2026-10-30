@@ -7,6 +7,9 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore"
+    groups:
+      cargo-dependencies:
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -15,3 +18,17 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+    groups:
+      browser-test-tools:
+        patterns: ["*"]
