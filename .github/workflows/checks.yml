@@ -1,0 +1,72 @@
+name: Shared checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    name: Workflows and scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned analysis tools
+        run: sh .github/scripts/install-analysis-tools.sh "$RUNNER_TEMP/analysis-tools" >> "$GITHUB_PATH"
+      - run: actionlint
+      - run: shellcheck scripts/*.sh .github/scripts/*.sh
+      - run: python3 -m unittest discover -s tests/ci -v
+
+  macos:
+    name: macOS tests and package
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Browser dependencies
+        run: |
+          npm ci
+          npx playwright install webkit
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked --all-targets
+      - run: cargo test --locked --doc
+      - run: npm test
+      - name: Build and verify development DMG
+        run: |
+          test "$(uname -m)" = arm64
+          cargo build --release --locked
+          python3 -m unittest discover -s tests/ci -v
+      - name: Browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  audit:
+    uses: ./.github/workflows/security.yml

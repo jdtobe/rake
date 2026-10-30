@@ -1,87 +1,106 @@
 name: Release
 
-# Cut a release by hand from the Actions tab (Run workflow) on main. Releases are not
-# automatic: the version scheme is v{YY}.{month}.{build}, where the build number counts
-# releases in that month and starts at 0, so the first release of October 2026 is v26.10.0.
+# Manual only. Dry-run executes all checks/builds but cannot tag or publish.
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Verify a release build without creating a tag or release
+        type: boolean
+        default: true
+        required: true
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Publish a release
-    runs-on: macos-latest
-    timeout-minutes: 30
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - name: Browser dependencies
+      - name: Require main
         run: |
-          npm ci
-          npx playwright install webkit
-
-      - name: Check the branch
-        run: |
-          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
-            echo "::error::Releases are cut from main, not ${GITHUB_REF}"
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo '::error::Releases and dry-runs must be dispatched from main'
             exit 1
           fi
 
-      - name: Full checks
-        run: |
-          cargo fmt --check
-          cargo clippy --all-targets -- -D warnings
-          cargo test --all-targets
-          cargo test --doc
-          npm test
+  checks:
+    needs: guard
+    uses: ./.github/workflows/checks.yml
 
-      - name: Work out the version
+  build:
+    needs: checks
+    runs-on: macos-15
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      sha256: ${{ steps.package.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Calculate and stamp version
         id: version
-        run: echo "tag=$(.github/scripts/next-version.sh)" >> "$GITHUB_OUTPUT"
-
-      # The tag is the release version; put it in the binary too so About matches the tag.
-      # Nothing is committed back, so the repository keeps its development version.
-      - name: Stamp the version into the build
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          version="${TAG#v}"
-          perl -pi -e "s/^version = \"[^\"]*\"/version = \"${version}\"/" Cargo.toml
-          grep -q "^version = \"${version}\"$" Cargo.toml
-
-      - name: Build
-        run: cargo build --release
-
-      - name: Package
+          tag="$(.github/scripts/next-version.sh)"
+          python3 .github/scripts/stamp-version.py "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Build stamped arm64 binary
+        run: |
+          test "$(uname -m)" = arm64
+          cargo build --release --locked
+      - name: Package and inspect mounted DMG
         id: package
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          dmg="$(scripts/package.sh "${TAG}")"
-          echo "dmg=${dmg}" >> "$GITHUB_OUTPUT"
+          dmg="$(scripts/package.sh "${TAG#v}")"
+          checksum="$(scripts/verify-package.sh "$dmg" "${TAG#v}")"
+          echo "sha256=${checksum%% *}" >> "$GITHUB_OUTPUT"
+          echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
+      - name: Keep verified build for dry-run or publication
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-dmg
+          path: ${{ steps.package.outputs.dmg }}
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Publish
+  publish:
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      # No source checkout or execution of repository code in this write-token job.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-dmg
+          path: release
+      - name: Publish exactly the verified DMG at the checked commit
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-          DMG: ${{ steps.package.outputs.dmg }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.build.outputs.tag }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
         run: |
-          gh release create "${TAG}" "${DMG}" \
-            --title "${TAG}" \
-            --generate-notes \
-            --target "${GITHUB_SHA}"
+          dmg="release/Rake-${TAG}-arm64.dmg"
+          printf '%s  %s\n' "$SHA256" "$dmg" | sha256sum --check -
+          # Fail on an existing ref rather than publishing against an unchecked tag.
+          gh api "repos/${GH_REPO}/git/refs" -f "ref=refs/tags/${TAG}" -f "sha=${GITHUB_SHA}"
+          gh release create "$TAG" "$dmg" --verify-tag --title "$TAG" --generate-notes \
+            --notes "SHA-256 (Rake-${TAG}-arm64.dmg): ${SHA256}" --target "$GITHUB_SHA"

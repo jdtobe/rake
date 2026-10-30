@@ -128,12 +128,59 @@ npm test
 See [tabs acceptance checks](docs/testing/tabs.md) for automated evidence and
 remaining native hand checks. These tools are development-only, not shipped in the app.
 
-Every push runs formatting, lints and tests on macOS in CI; pull requests run the same
-checks across all targets and the doc tests. Releases are cut by hand from the Actions
-tab, never on merge, and are tagged `v{YY}.{month}.{build}` (the first release of
-October 2026 is `v26.10.0`). A release publishes `Rake-v….dmg`, built by
-`scripts/package.sh`; run that script after `cargo build --release` to make the same
-artefact locally.
+Pull requests and pushes to **main** run the same shared checks (feature-branch
+pushes do not also trigger duplicate runs): formatting, strict Clippy, all-target
+Rust tests, doc tests, real WebKit tests and a built/mounted development DMG on
+macOS; actionlint, ShellCheck and Python script tests on Ubuntu. This does not
+claim Linux support for Rake. Failed browser checks retain traces, screenshots,
+videos and the HTML report as workflow artifacts for seven days.
+
+Rust and npm dependency audits run with those checks and weekly on Monday at
+08:17 UTC; **Dependency security → Run workflow** also runs them manually.
+Actions are pinned to commit SHAs; grouped Dependabot updates cover Cargo, Actions
+and npm. Audits fail on vulnerabilities; informational Rust advisories remain
+visible warnings. Current warnings are `proc-macro-error` (unmaintained) and
+`glib` (`VariantStrIter` unsoundness), both in the upstream Linux GTK dependency
+tree, not the macOS build. No advisory is suppressed and no dependency upgrade
+is implied by this workflow change.
+
+### Manual releases
+
+Releases never run on push, tag or merge. In **Actions → Release → Run workflow**,
+select **main**. Leave **dry_run** checked (the default) to run full checks and
+produce a verified DMG workflow artifact **without creating a tag or release**.
+Uncheck it only when you intend to publish. Both modes reject other branches.
+
+The version is `vYY.M.N`: UTC year/month without leading month zero, with build
+`N` starting at zero each month and incrementing past the highest canonical tag
+(October 2026 starts at `v26.10.0`, November at `v26.11.0`). The workflow stamps
+only its checkout's Cargo package and root lockfile entry. Cargo and both bundle
+version fields are numeric; About and release tags display the `v` prefix. Source
+stays at the development version. Release runs are serialized; tags point to the
+exact checked commit. A failed publication after tag creation can leave a tag;
+the next run uses the next build number rather than overwriting it.
+
+Only the final publish job receives a write token; it does not check out or execute
+repository code. It publishes **one arm64 DMG**, with `Rake.app` and an Applications
+symlink, and includes its SHA-256 in generated release notes. Checks and builds
+have read-only tokens. Images are verified for checksum integrity, bundle versions,
+executable architecture, icon, ad-hoc signature and Applications link before
+upload; no signing/notarisation or automatic updates are added.
+
+To build and verify a development image locally on Apple Silicon macOS:
+
+```bash
+cargo build --release --locked
+scripts/package.sh                  # prints dist/Rake-v0.1.0-arm64.dmg
+scripts/verify-package.sh dist/Rake-v0.1.0-arm64.dmg 0.1.0
+python3 -m unittest discover -s tests/ci -v  # Python 3.11+; includes real DMG tests
+```
+
+`package.sh` accepts a **numeric** version, not a `v`-prefixed tag. Package tests
+use a temporary directory so they do not replace your local preview. Analysis
+tools can be installed without changing global tools using
+`sh .github/scripts/install-analysis-tools.sh <scratch-directory>`; it prints the
+directory to add to PATH.
 
 ## Contributing
 

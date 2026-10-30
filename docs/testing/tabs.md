@@ -29,6 +29,9 @@ Playwright 1.56.1 archive extraction here; provisioning succeeded under Node 22.
 
 ## Native smoke evidence
 
+- [x] User reviewed the running tabs build and reported it looks good on
+  2026-10-30. This is general review, not evidence that every check below was run.
+
 - [x] Actual AppKit main-menu Cmd+T/W/Q accelerators inspected, and each menu action
   invoked once in a temporary main-thread harness: NewTab, CloseActiveTab, Quit.
   This is not a physical-keyboard or dialog-appearance test.

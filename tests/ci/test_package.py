@@ -26,6 +26,7 @@ class PackageValidation(unittest.TestCase):
                 self.assertIn('invalid version', result.stderr, result.stderr)
                 self.assertEqual(sentinel.read_text(), 'previous preview')
 
+    @unittest.skipUnless(sys.platform == 'darwin', 'corrupt DMG inspection requires macOS')
     def test_corrupt_image_is_rejected(self):
         with tempfile.TemporaryDirectory(prefix='rake-corrupt-') as directory:
             image = Path(directory) / 'bad.dmg'
