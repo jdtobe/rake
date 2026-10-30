@@ -490,9 +490,10 @@ mod tests {
         );
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         let targets = loop {
-            let targets = crate::process::snapshot(session.identity.unwrap()).unwrap();
-            if targets.iter().any(|id| crate::process::is_stopped(*id)) {
-                break targets;
+            if let Ok(targets) = crate::process::snapshot(session.identity.unwrap()) {
+                if targets.iter().any(|id| crate::process::is_stopped(*id)) {
+                    break targets;
+                }
             }
             assert!(std::time::Instant::now() < deadline, "job did not stop");
             std::thread::sleep(Duration::from_millis(10));
@@ -535,9 +536,10 @@ mod tests {
         await_jobs(&session, crate::process::JobState::Busy);
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         let targets = loop {
-            let targets = crate::process::snapshot(session.identity.unwrap()).unwrap();
-            if targets.len() >= 4 {
-                break targets;
+            if let Ok(targets) = crate::process::snapshot(session.identity.unwrap()) {
+                if targets.len() >= 4 {
+                    break targets;
+                }
             }
             assert!(std::time::Instant::now() < deadline);
             std::thread::sleep(Duration::from_millis(10));
