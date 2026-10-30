@@ -8,6 +8,7 @@ pub mod geometry;
 pub mod hotkey;
 pub mod instance;
 pub mod pty;
+pub mod tab_layout;
 pub mod tabs;
 pub mod terminal_profile;
 pub mod terminal_protocol;
