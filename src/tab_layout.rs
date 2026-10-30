@@ -83,6 +83,32 @@ pub struct StartupLayout {
     pub notices: Vec<String>,
 }
 
+pub fn snapshot(
+    tabs: &crate::tabs::Tabs,
+    observations: &[(crate::tabs::TabId, crate::process::SessionObservation)],
+) -> SavedLayout {
+    SavedLayout {
+        version: 1,
+        selected: tabs
+            .ordered()
+            .iter()
+            .position(|tab| Some(tab.id) == tabs.active())
+            .unwrap_or(0),
+        tabs: tabs
+            .ordered()
+            .iter()
+            .map(|tab| SavedTab {
+                cwd: observations
+                    .iter()
+                    .find(|(id, _)| *id == tab.id)
+                    .and_then(|(_, observation)| observation.cwd.clone())
+                    .unwrap_or_else(|| tab.cwd.clone()),
+                name: tab.name.clone(),
+            })
+            .collect(),
+    }
+}
+
 pub fn resolve_startup(
     mode: StartupTabs,
     saved: Option<SavedLayout>,
@@ -120,6 +146,34 @@ pub fn resolve_startup(
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStringExt;
+
+    #[test]
+    fn snapshot_preserves_manual_and_automatic_names() {
+        let mut tabs = crate::tabs::Tabs::new();
+        let id = tabs.reserve_id().unwrap();
+        tabs.insert(
+            id,
+            "/".into(),
+            TabName {
+                manual: Some("mine".into()),
+                automatic: Some("ssh".into()),
+            },
+        );
+        let layout = snapshot(
+            &tabs,
+            &[(
+                id,
+                crate::process::SessionObservation {
+                    cwd: Some("/private".into()),
+                    jobs: crate::process::JobState::Busy,
+                },
+            )],
+        );
+        assert_eq!(layout.tabs[0].cwd, PathBuf::from("/private"));
+        assert_eq!(layout.tabs[0].name.manual.as_deref(), Some("mine"));
+        assert_eq!(layout.tabs[0].name.automatic.as_deref(), Some("ssh"));
+        assert_eq!(snapshot(&tabs, &[]).tabs[0].cwd, PathBuf::from("/"));
+    }
 
     fn temp() -> PathBuf {
         let path = std::env::temp_dir().join(format!(

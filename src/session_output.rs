@@ -63,7 +63,7 @@ impl SessionOutput {
         *self.0.wake.lock().unwrap() = Some(Arc::new(wake));
     }
 
-    fn wake(&self) {
+    pub(crate) fn wake(&self) {
         let wake = self.0.wake.lock().unwrap().clone();
         if let Some(wake) = wake {
             wake();
