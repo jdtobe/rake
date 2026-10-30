@@ -40,7 +40,7 @@
     }
     fit(next);
     next.terminal.refresh(0, next.terminal.rows - 1);
-    next.terminal.focus();
+    if (!document.querySelector('.tab-name-editor')) next.terminal.focus();
   }
   function create(id) {
     if (sessions.has(id)) return;
