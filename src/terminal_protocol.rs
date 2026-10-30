@@ -2,8 +2,113 @@
 
 use std::collections::VecDeque;
 
+use crate::tabs::TabId;
 use base64::Engine;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum WorkspaceRequest {
+    Ready,
+    NewTab,
+    SelectTab { id: TabId },
+    SelectNumber { number: u8 },
+    CycleTab { backwards: bool },
+    CloseTab { id: TabId },
+    RenameTab { id: TabId, text: String },
+    Input { id: TabId, data: String },
+    Resize { id: TabId, cols: u16, rows: u16 },
+    Copy { id: TabId, data: String },
+    Paste { id: TabId },
+    Title { id: TabId, text: String },
+    OutputAck { id: TabId, sequence: u32 },
+}
+
+pub fn parse_workspace_request(body: &str) -> Result<WorkspaceRequest, String> {
+    let request: WorkspaceRequest =
+        serde_json::from_str(body).map_err(|e| format!("invalid workspace request: {e}"))?;
+    if matches!(
+        request,
+        WorkspaceRequest::Resize { cols: 0, .. } | WorkspaceRequest::Resize { rows: 0, .. }
+    ) {
+        return Err("terminal dimensions must be positive".into());
+    }
+    Ok(request)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TabSummary {
+    pub id: TabId,
+    pub title: String,
+    pub manual: Option<String>,
+    pub busy: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum UiDelivery {
+    CreateTab {
+        id: TabId,
+    },
+    RemoveTab {
+        id: TabId,
+    },
+    SelectTab {
+        id: TabId,
+    },
+    TabMetadata {
+        tabs: Vec<TabSummary>,
+        active: Option<TabId>,
+    },
+    Notice {
+        text: String,
+    },
+    Output {
+        id: TabId,
+        sequence: u32,
+        data: String,
+    },
+    End {
+        id: TabId,
+        sequence: u32,
+        message: String,
+    },
+    Paste {
+        id: TabId,
+        text: String,
+    },
+}
+
+impl From<&crate::session_output::SessionDelivery> for UiDelivery {
+    fn from(delivery: &crate::session_output::SessionDelivery) -> Self {
+        let id = delivery.id;
+        let sequence = delivery.sequence;
+        match &delivery.event {
+            TerminalDelivery::Output(bytes) => Self::Output {
+                id,
+                sequence,
+                data: base64::engine::general_purpose::STANDARD.encode(bytes),
+            },
+            TerminalDelivery::Exited { code } => Self::End {
+                id,
+                sequence,
+                message: code.map_or_else(
+                    || "Process ended.".into(),
+                    |code| format!("Process ended with status {code}."),
+                ),
+            },
+            TerminalDelivery::Failed(text) => Self::End {
+                id,
+                sequence,
+                message: format!("Terminal error: {text}"),
+            },
+            TerminalDelivery::Paste(text) => Self::Paste {
+                id,
+                text: text.clone(),
+            },
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalRequest {
@@ -150,6 +255,29 @@ pub fn delivery_script(delivery: &TerminalDelivery) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wire_rejects_missing_or_invalid_id_and_extra_fields() {
+        for body in [
+            r#"{"type":"input","data":"x"}"#,
+            r#"{"type":"input","id":0,"data":"x"}"#,
+            r#"{"type":"paste","id":1,"extra":0}"#,
+            r#"{"type":"resize","id":1,"cols":0,"rows":24}"#,
+        ] {
+            assert!(parse_workspace_request(body).is_err(), "{body}");
+        }
+        assert!(
+            matches!(parse_workspace_request(r#"{"type":"input","id":1,"data":"x"}"#).unwrap(), WorkspaceRequest::Input{id, data} if id.get()==1 && data=="x")
+        );
+        let encoded = serde_json::to_string(&UiDelivery::Notice {
+            text: "</script>\"".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&encoded).unwrap()["text"],
+            "</script>\""
+        );
+    }
 
     #[test]
     fn parse_ready_request() {
