@@ -6,9 +6,9 @@ set -eu
 cd "$(dirname "$0")/.."
 
 version="${1:-$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml)}"
-version="${version#v}"
-if [ -z "$version" ]; then
-    echo "no version: pass one or set it in Cargo.toml" >&2
+if ! printf '%s\n' "$version" | LC_ALL=C grep -Eq '^(0|[1-9][0-9]*)\.([1-9]|1[0-2])\.(0|[1-9][0-9]*)$' ||
+    [ "$(printf '%s' "$version" | wc -l | tr -d ' ')" != 0 ]; then
+    echo "invalid version: expected numeric major.month.build without leading zeroes" >&2
     exit 1
 fi
 
