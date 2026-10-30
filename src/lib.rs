@@ -7,6 +7,7 @@ pub mod dropdown;
 pub mod geometry;
 pub mod hotkey;
 pub mod instance;
+pub mod process;
 pub mod pty;
 pub mod session_output;
 pub mod tab_layout;
