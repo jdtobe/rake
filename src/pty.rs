@@ -71,6 +71,14 @@ impl PtySession {
     where
         F: Fn(TerminalEvent) + Send + 'static,
     {
+        if let Some(cwd) = spec.cwd.as_ref() {
+            if !cwd.is_absolute() || !cwd.is_dir() || std::fs::read_dir(cwd).is_err() {
+                return Err(format!(
+                    "working directory {} is unavailable",
+                    cwd.display()
+                ));
+            }
+        }
         let pair = native_pty_system()
             .openpty(size.as_pty_size())
             .map_err(|e| format!("could not open PTY: {e}"))?;
@@ -305,7 +313,6 @@ mod tests {
                 TerminalEvent::Output(bytes) => output.extend(bytes),
                 TerminalEvent::Exited { .. } => break,
                 TerminalEvent::Failed(error) => panic!("PTY failed: {error}"),
-                TerminalEvent::Paste(text) => panic!("unexpected paste delivery: {text}"),
             }
         }
 

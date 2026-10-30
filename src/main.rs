@@ -1,59 +1,46 @@
-//! Menubar app: a tray icon that toggles the panel (right-click for About and Quit), plus a
-//! global show/hide hotkey.
-
+//! Main-thread OS wiring; session and tab policy live in Workspace.
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
+use rake::app_ui::{self, AppCommand, AppUi};
 use rake::clipboard;
-use rake::config::{self, Config};
+use rake::config;
 use rake::dropdown::DropDown;
 use rake::hotkey::{should_toggle, Visibility};
-use rake::instance;
-use rake::pty::{default_login_shell, PtySession, TerminalSize};
-use rake::terminal_profile;
-use rake::terminal_protocol::{parse_request, TerminalEvent, TerminalRequest};
-use rake::{about_metadata, build_icon, APP_NAME};
+use rake::session_output::SessionOutput;
+use rake::terminal_protocol::{parse_workspace_request, UiDelivery};
+use rake::workspace::{Workspace, WorkspaceCommand, WorkspaceEffect};
+use rake::{build_icon, instance, terminal_profile, APP_NAME};
+use std::collections::VecDeque;
 use std::path::Path;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::Instant;
 use tao::event::{Event, StartCause, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 #[cfg(target_os = "macos")]
 use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
-use tray_icon::menu::{Menu, PredefinedMenuItem};
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
-/// Events other threads forward into the single `tao` event loop.
 #[derive(Debug)]
 enum AppEvent {
     Hotkey(GlobalHotKeyEvent),
     TrayClick,
     ShowRequest,
-    TerminalRequest(String),
-    Terminal(TerminalEvent),
+    Request(String),
+    Wake,
+    Menu(AppCommand),
 }
 
-/// Show or hide the panel, keeping the tracked state and the window in step.
-fn toggle(visibility: &mut Visibility, dropdown: &mut Option<DropDown>) {
-    *visibility = visibility.toggled();
-    if let Some(dropdown) = dropdown.as_mut() {
-        let now = Instant::now();
-        match *visibility {
-            Visibility::Shown => dropdown.show(now),
-            Visibility::Hidden => dropdown.hide(now),
-        }
-    }
-}
-
-/// Report an unrecoverable startup problem and exit.
 fn fail(message: &str) -> ! {
     eprintln!("{message}");
-    std::process::exit(1);
+    std::process::exit(1)
 }
 
 fn main() {
-    // One copy per user: a second launch asks the running one to show and exits.
-    let state_dir = match std::env::var_os("HOME") {
-        Some(home) => instance::state_dir(Path::new(&home)),
-        None => std::env::temp_dir().join("rake"),
-    };
+    let home = std::env::var_os("HOME").unwrap_or_else(|| fail("HOME is required"));
+    let home = Path::new(&home).to_path_buf();
+    let state_dir = instance::state_dir(&home);
     let instance = match instance::claim(&state_dir) {
         Ok(Some(instance)) => instance,
         Ok(None) => {
@@ -62,235 +49,238 @@ fn main() {
         }
         Err(error) => fail(&format!("could not guard against a second copy: {error}")),
     };
-
-    let mut event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
-
-    // Menubar-only app: no Dock icon.
-    #[cfg(target_os = "macos")]
-    event_loop.set_activation_policy(ActivationPolicy::Accessory);
-
-    let config = match std::env::var_os("HOME") {
-        Some(home) => config::load(&config::config_path(Path::new(&home))),
-        None => Ok(Config::default()),
-    }
-    .unwrap_or_else(|e| fail(&e));
+    let config = config::load(&config::config_path(&home)).unwrap_or_else(|e| fail(&e));
     let hotkey = config.hotkey().unwrap_or_else(|e| fail(&e));
     let theme = terminal_profile::from_default_terminal().unwrap_or_default();
-
+    let mut event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
+    #[cfg(target_os = "macos")]
+    event_loop.set_activation_policy(ActivationPolicy::Accessory);
     let proxy = event_loop.create_proxy();
+    let modal = Arc::new(AtomicBool::new(false));
     let hotkey_proxy = proxy.clone();
+    let hotkey_modal = modal.clone();
     GlobalHotKeyEvent::set_event_handler(Some(move |event| {
-        let _ = hotkey_proxy.send_event(AppEvent::Hotkey(event));
+        if !hotkey_modal.load(Ordering::Acquire) {
+            let _ = hotkey_proxy.send_event(AppEvent::Hotkey(event));
+        }
     }));
-
     let show_proxy = proxy.clone();
-    if let Err(error) = instance.listen(move || {
-        let _ = show_proxy.send_event(AppEvent::ShowRequest);
-    }) {
-        fail(&format!("could not listen for a second launch: {error}"));
-    }
-
-    let menu = Menu::new();
-    menu.append_items(&[
-        &PredefinedMenuItem::about(None, Some(about_metadata())),
-        &PredefinedMenuItem::separator(),
-        &PredefinedMenuItem::quit(None),
-    ])
-    .expect("failed to build menu");
-
-    // The tray icon and hotkey manager must be created once the event loop has started
-    // (required on macOS), and must be kept alive for as long as the loop runs.
-    let mut tray: Option<TrayIcon> = None;
-    let mut hotkey_manager: Option<GlobalHotKeyManager> = None;
-    let mut visibility = Visibility::Shown;
+    instance
+        .listen(move || {
+            let _ = show_proxy.send_event(AppEvent::ShowRequest);
+        })
+        .unwrap_or_else(|e| fail(&e.to_string()));
+    let output = SessionOutput::new();
+    let wake_proxy = proxy.clone();
+    output.set_waker(move || {
+        let _ = wake_proxy.send_event(AppEvent::Wake);
+    });
+    let mut workspace = Workspace::new(config.clone(), home, state_dir, output);
     let mut dropdown: Option<DropDown> = None;
-    let mut terminal: Option<PtySession> = None;
-    let mut terminal_accepting_input = false;
+    let mut tray: Option<TrayIcon> = None;
+    let mut ui: Option<AppUi> = None;
+    let mut manager: Option<GlobalHotKeyManager> = None;
+    let mut visibility = Visibility::Shown;
     let mut show_on_launch = false;
 
     event_loop.run(move |event, target, control_flow| {
         *control_flow = ControlFlow::Wait;
-
-        match event {
+        let effects = match event {
             Event::NewEvents(StartCause::Init) => {
+                let menu_proxy = proxy.clone();
+                let menu_modal = modal.clone();
+                let app_ui = AppUi::new(
+                    move |command| {
+                        if !menu_modal.load(Ordering::Acquire) {
+                            let _ = menu_proxy.send_event(AppEvent::Menu(command));
+                        }
+                    },
+                    config.appearance,
+                )
+                .unwrap_or_else(|e| fail(&e));
                 let builder = TrayIconBuilder::new()
-                    .with_menu(Box::new(menu.clone()))
+                    .with_menu(Box::new(app_ui.tray.clone()))
                     .with_menu_on_left_click(false)
                     .with_tooltip(APP_NAME);
-                // Template icons are recoloured by macOS for light/dark menubars.
                 #[cfg(target_os = "macos")]
                 let builder = builder.with_icon_templated(build_icon());
                 #[cfg(not(target_os = "macos"))]
                 let builder = builder.with_icon(build_icon());
-                tray = Some(builder.build().expect("failed to create tray icon"));
-
-                // Left-click toggles the panel; the right-click menu stays native.
+                tray = Some(builder.build().unwrap_or_else(|e| fail(&e.to_string())));
+                ui = Some(app_ui);
                 let tray_proxy = proxy.clone();
+                let tray_modal = modal.clone();
                 TrayIconEvent::set_event_handler(Some(move |event| {
-                    if matches!(
-                        event,
-                        TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        }
-                    ) {
+                    if !tray_modal.load(Ordering::Acquire)
+                        && matches!(
+                            event,
+                            TrayIconEvent::Click {
+                                button: MouseButton::Left,
+                                button_state: MouseButtonState::Up,
+                                ..
+                            }
+                        )
+                    {
                         let _ = tray_proxy.send_event(AppEvent::TrayClick);
                     }
                 }));
-
-                let manager = GlobalHotKeyManager::new().expect("failed to start hotkey manager");
-                if let Err(e) = manager.register(hotkey) {
-                    fail(&format!(
-                        "could not register hotkey {:?}: {e}",
-                        config.hotkey
-                    ));
-                }
-                hotkey_manager = Some(manager);
-
+                let hotkey_manager =
+                    GlobalHotKeyManager::new().unwrap_or_else(|e| fail(&e.to_string()));
+                hotkey_manager
+                    .register(hotkey)
+                    .unwrap_or_else(|e| fail(&e.to_string()));
+                manager = Some(hotkey_manager);
                 let ipc_proxy = proxy.clone();
-                let created_dropdown = DropDown::new(target, &config, &theme, move |body| {
-                    let _ = ipc_proxy.send_event(AppEvent::TerminalRequest(body));
-                })
-                .unwrap_or_else(|e| fail(&e));
-
-                let pty_proxy = proxy.clone();
-                terminal = Some(
-                    PtySession::spawn(
-                        default_login_shell(std::env::var_os("SHELL")),
-                        TerminalSize::new(80, 24).expect("initial terminal size is positive"),
-                        move |event| {
-                            let _ = pty_proxy.send_event(AppEvent::Terminal(event));
-                        },
-                    )
+                dropdown = Some(
+                    DropDown::new(target, &config, &theme, move |body| {
+                        let _ = ipc_proxy.send_event(AppEvent::Request(body));
+                    })
                     .unwrap_or_else(|e| fail(&e)),
                 );
-                terminal_accepting_input = true;
-                dropdown = Some(created_dropdown);
                 show_on_launch = true;
+                workspace.handle(WorkspaceCommand::Start)
             }
-            Event::UserEvent(AppEvent::Hotkey(e))
-                if e.id() == hotkey.id() && should_toggle(e.state()) =>
+            Event::UserEvent(AppEvent::Hotkey(event))
+                if event.id() == hotkey.id() && should_toggle(event.state()) =>
             {
-                toggle(&mut visibility, &mut dropdown);
+                toggle(&mut workspace, &mut visibility, &mut dropdown)
             }
             Event::UserEvent(AppEvent::TrayClick) => {
-                toggle(&mut visibility, &mut dropdown);
+                toggle(&mut workspace, &mut visibility, &mut dropdown)
             }
-            // A second launch, whether through our socket or macOS reopening the app.
             Event::UserEvent(AppEvent::ShowRequest) | Event::Reopen { .. } => {
-                if let Some(dropdown) = dropdown.as_mut() {
-                    visibility = Visibility::Shown;
-                    dropdown.show(Instant::now());
-                } else {
-                    show_on_launch = true;
-                }
+                workspace.handle(WorkspaceCommand::Summon)
             }
-            Event::UserEvent(AppEvent::TerminalRequest(body)) => match parse_request(&body) {
-                Ok(TerminalRequest::Ready) => {
-                    if let Some(dropdown) = &mut dropdown {
-                        dropdown.mark_terminal_ready();
-                        if let Err(error) = dropdown.focus_terminal() {
-                            eprintln!("{error}");
-                        }
-                    }
+            Event::UserEvent(AppEvent::Menu(command)) => {
+                workspace.handle(WorkspaceCommand::Native(command))
+            }
+            Event::UserEvent(AppEvent::Request(body)) => match parse_workspace_request(&body) {
+                Ok(request) => workspace.handle(WorkspaceCommand::Ui(request)),
+                Err(error) => {
+                    eprintln!("{error}");
+                    vec![]
                 }
-                Ok(TerminalRequest::Input(bytes)) if terminal_accepting_input => {
-                    if let Some(session) = &mut terminal {
-                        if let Err(error) = session.write(&bytes) {
-                            terminal_accepting_input = false;
-                            if let Some(dropdown) = &mut dropdown {
-                                dropdown.queue_terminal_event(TerminalEvent::Failed(error));
-                            }
-                        }
-                    }
-                }
-                Ok(TerminalRequest::Input(_)) => {}
-                Ok(TerminalRequest::Resize { cols, rows }) => {
-                    let size = TerminalSize::new(cols, rows)
-                        .expect("terminal protocol rejects zero dimensions");
-                    if let Some(session) = &mut terminal {
-                        if let Err(error) = session.resize(size) {
-                            terminal_accepting_input = false;
-                            if let Some(dropdown) = &mut dropdown {
-                                dropdown.queue_terminal_event(TerminalEvent::Failed(error));
-                            }
-                        }
-                    }
-                }
-                Ok(TerminalRequest::Copy(text)) => {
-                    if let Err(error) = clipboard::write(&text) {
-                        eprintln!("{error}");
-                    }
-                }
-                Ok(TerminalRequest::Paste) if terminal_accepting_input => match clipboard::read() {
-                    Ok(Some(text)) if !text.is_empty() => {
-                        if let Some(dropdown) = &mut dropdown {
-                            dropdown.queue_terminal_event(TerminalEvent::Paste(text));
-                        }
-                    }
-                    Ok(_) => {}
-                    Err(error) => eprintln!("{error}"),
-                },
-                Ok(TerminalRequest::Paste) => {}
-                Err(error) => eprintln!("{error}"),
             },
-            Event::UserEvent(AppEvent::Terminal(event)) => {
-                if matches!(
-                    event,
-                    TerminalEvent::Exited { .. } | TerminalEvent::Failed(_)
-                ) {
-                    terminal_accepting_input = false;
-                }
-                if let Some(dropdown) = &mut dropdown {
-                    dropdown.queue_terminal_event(event);
-                }
-            }
+            Event::UserEvent(AppEvent::Wake) => workspace.handle(WorkspaceCommand::Pump),
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::Resized(_),
                 ..
             } => {
-                if let Some(dropdown) = dropdown.as_ref().filter(|d| d.window_id() == window_id) {
-                    let _ = dropdown.resize_terminal_view();
+                if let Some(d) = dropdown.as_ref().filter(|d| d.window_id() == window_id) {
+                    let _ = d.resize_terminal_view();
                 }
+                vec![]
             }
             Event::WindowEvent {
                 window_id,
-                event: WindowEvent::Focused(focused),
+                event: WindowEvent::Focused(false),
                 ..
             } => {
-                if let Some(dropdown) = dropdown.as_mut().filter(|d| d.window_id() == window_id) {
-                    let next = visibility.after_focus_change(config.hide_on_focus_lost, focused);
-                    if next != visibility {
-                        visibility = next;
-                        dropdown.hide(Instant::now());
+                if workspace.hide_on_focus_loss() && visibility == Visibility::Shown {
+                    if let Some(d) = dropdown
+                        .as_mut()
+                        .filter(|d| d.window_id() == window_id && !d.is_focused())
+                    {
+                        visibility = Visibility::Hidden;
+                        d.hide(Instant::now());
                     }
                 }
+                vec![]
             }
-            // Runs after every batch of events, including the timed wake-ups requested below.
             Event::MainEventsCleared => {
-                if let Some(dropdown) = &mut dropdown {
+                if let Some(d) = dropdown.as_mut() {
                     if show_on_launch {
                         show_on_launch = false;
-                        dropdown.show(Instant::now());
+                        d.show(Instant::now());
                     }
-                    dropdown.tick(Instant::now());
-                    if let Err(error) = dropdown.flush_terminal() {
+                    d.tick(Instant::now());
+                }
+                workspace.handle(WorkspaceCommand::Pump)
+            }
+            _ => vec![],
+        };
+        let mut effects: VecDeque<_> = effects.into();
+        while let Some(effect) = effects.pop_front() {
+            match effect {
+                WorkspaceEffect::Ui(deliveries) => {
+                    let output = deliveries
+                        .iter()
+                        .any(|d| matches!(d, UiDelivery::Output { .. } | UiDelivery::End { .. }));
+                    let result = dropdown
+                        .as_mut()
+                        .ok_or_else(|| "window not created".to_string())
+                        .and_then(|d| d.apply_ui(&deliveries));
+                    if output {
+                        workspace.finish_delivery(result.is_ok());
+                    }
+                    if let Err(error) = result {
                         eprintln!("{error}");
                     }
                 }
+                WorkspaceEffect::ShowPanel => {
+                    visibility = Visibility::Shown;
+                    if let Some(d) = dropdown.as_mut() {
+                        d.show(Instant::now());
+                    }
+                }
+                WorkspaceEffect::HidePanel => {
+                    visibility = Visibility::Hidden;
+                    if let Some(d) = dropdown.as_mut() {
+                        d.hide(Instant::now());
+                    }
+                }
+                WorkspaceEffect::Confirm { token, names } => {
+                    modal.store(true, Ordering::Release);
+                    let confirmed = app_ui::confirm_termination(&names, config.appearance);
+                    effects
+                        .extend(workspace.handle(WorkspaceCommand::Confirm { token, confirmed }));
+                    modal.store(false, Ordering::Release);
+                    if visibility == Visibility::Shown {
+                        if let Some(d) = dropdown.as_mut() {
+                            d.show(Instant::now());
+                        }
+                    }
+                }
+                WorkspaceEffect::Copy(text) => {
+                    if let Err(error) = clipboard::write(&text) {
+                        eprintln!("{error}");
+                    }
+                }
+                WorkspaceEffect::ReadPaste(id) => match clipboard::read() {
+                    Ok(Some(text)) => {
+                        effects.extend(workspace.handle(WorkspaceCommand::Paste { id, text }))
+                    }
+                    Ok(None) => {}
+                    Err(error) => eprintln!("{error}"),
+                },
+                WorkspaceEffect::Exit => *control_flow = ControlFlow::Exit,
             }
-            _ => {}
         }
-
-        // Keep the loop spinning while sliding; otherwise sleep until something happens. A timed
-        // wake-up (`WaitUntil`) is not used because macOS fires timers late for this
-        // background-style app, in the worst case freezing the slide for hundreds of
-        // milliseconds. Slide positions come from elapsed time, so the spin rate does not matter.
-        if dropdown.as_ref().is_some_and(DropDown::is_animating) {
+        if !matches!(*control_flow, ControlFlow::Exit)
+            && dropdown.as_ref().is_some_and(DropDown::is_animating)
+        {
             *control_flow = ControlFlow::Poll;
         }
-        let _ = (&tray, &hotkey_manager, &terminal);
+        let _ = (&tray, &ui, &manager, &instance);
     });
+}
+
+fn toggle(
+    workspace: &mut Workspace,
+    visibility: &mut Visibility,
+    dropdown: &mut Option<DropDown>,
+) -> Vec<WorkspaceEffect> {
+    if workspace.confirmation_pending() {
+        return vec![];
+    }
+    if *visibility == Visibility::Shown {
+        *visibility = Visibility::Hidden;
+        if let Some(d) = dropdown.as_mut() {
+            d.hide(Instant::now());
+        }
+        vec![]
+    } else {
+        workspace.handle(WorkspaceCommand::Summon)
+    }
 }

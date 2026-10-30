@@ -4,6 +4,7 @@ use crate::pty::{PtySession, ShellSpec, TerminalSize};
 use crate::session_output::SessionOutput;
 use crate::tabs::TabId;
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 #[derive(Default)]
@@ -18,6 +19,7 @@ struct Inner {
     stopped: Mutex<bool>,
     stop: Condvar,
     output: SessionOutput,
+    cleaning: AtomicUsize,
 }
 
 pub struct Sessions(Arc<Inner>);
@@ -30,6 +32,7 @@ impl Sessions {
             stopped: Mutex::new(false),
             stop: Condvar::new(),
             output,
+            cleaning: AtomicUsize::new(0),
         });
         let weak = Arc::downgrade(&inner);
         std::thread::spawn(move || {
@@ -125,22 +128,29 @@ impl Sessions {
         std::mem::take(&mut *self.0.updates.lock().unwrap())
     }
 
+    pub fn pending_cleanup(&self) -> usize {
+        self.0.cleaning.load(Ordering::Acquire)
+    }
+
     pub fn remove(&mut self, id: TabId) -> Result<(), String> {
         self.0.output.close(id);
         let session = self.0.sessions.lock().unwrap().remove(&id);
         self.0.updates.lock().unwrap().observations.remove(&id);
         if let Some(session) = session {
+            self.0.cleaning.fetch_add(1, Ordering::AcqRel);
             let weak = Arc::downgrade(&self.0);
             std::thread::spawn(move || {
-                if let Err(error) = session.lock().unwrap().terminate() {
-                    if let Some(inner) = weak.upgrade() {
+                let result = session.lock().unwrap().terminate();
+                if let Some(inner) = weak.upgrade() {
+                    if let Err(error) = result {
                         let mut updates = inner.updates.lock().unwrap();
                         if updates.errors.len() < 16 {
                             updates.errors.push(error);
                         }
                         drop(updates);
-                        inner.output.wake();
                     }
+                    inner.cleaning.fetch_sub(1, Ordering::AcqRel);
+                    inner.output.wake();
                 }
             });
         }

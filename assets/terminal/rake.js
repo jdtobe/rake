@@ -4,12 +4,7 @@
   const container = document.getElementById('terminal');
   const sessions = new Map();
   let active = null;
-  const legacy = !config.workspace;
-  const post = message => {
-    if (legacy && message.type === 'output_ack') return;
-    if (legacy) { message = {...message}; delete message.id; }
-    window.ipc.postMessage(JSON.stringify(message));
-  };
+  const post = message => window.ipc.postMessage(JSON.stringify(message));
   const strip = window.createTabStrip?.(post, config);
 
   function fit(session) {
@@ -117,13 +112,8 @@
   }
   window.rake = {
     apply,
-    focus(id = active) { if (sessions.has(id)) sessions.get(id).terminal.focus(); },
-    // Removed with the single-session Rust wiring at workspace integration.
-    writeBase64(data) {apply({type:'output',id:1,sequence:0,data});},
-    end(message) {apply({type:'end',id:1,sequence:0,message});},
-    paste(text) {apply({type:'paste',id:1,text});}
+    focus(id = active) { if (sessions.has(id)) sessions.get(id).terminal.focus(); }
   };
   new ResizeObserver(() => fit(sessions.get(active))).observe(container);
-  if (legacy) {create(1);select(1);}
   post({type:'ready'});
 })();

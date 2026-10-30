@@ -12,7 +12,7 @@ use tao::window::{Window, WindowBuilder, WindowId};
 use crate::animation::Slide;
 use crate::config::Config;
 use crate::geometry::{window_rect, Display, Rect};
-use crate::terminal_protocol::TerminalEvent;
+use crate::terminal_protocol::UiDelivery;
 use crate::terminal_view::TerminalView;
 use crate::theme::TerminalTheme;
 use crate::APP_NAME;
@@ -168,7 +168,7 @@ impl DropDown {
             .map_err(|e| format!("could not create window: {e}"))?;
         macos::configure_panel(&window);
         let window = Rc::new(window);
-        let terminal = TerminalView::new(&window, theme, ipc)?;
+        let terminal = TerminalView::new(&window, theme, config, ipc)?;
         Ok(DropDown {
             window,
             terminal,
@@ -309,19 +309,10 @@ impl DropDown {
             .set_bounds(self.window.inner_size(), self.window.scale_factor())
     }
 
-    pub fn mark_terminal_ready(&mut self) {
-        self.terminal.mark_ready();
+    pub fn apply_ui(&mut self, deliveries: &[UiDelivery]) -> Result<(), String> {
+        self.terminal.apply(deliveries)
     }
-
-    pub fn queue_terminal_event(&mut self, event: TerminalEvent) {
-        self.terminal.queue(event);
-    }
-
-    pub fn flush_terminal(&mut self) -> Result<(), String> {
-        self.terminal.flush()
-    }
-
-    pub fn focus_terminal(&self) -> Result<(), String> {
-        self.terminal.focus()
+    pub fn is_focused(&self) -> bool {
+        self.window.is_focused()
     }
 }

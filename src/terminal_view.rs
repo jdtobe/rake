@@ -1,9 +1,7 @@
 //! The local xterm.js document and its native webview.
 
 use crate::tabs::TabId;
-use crate::terminal_protocol::{
-    delivery_script, TerminalBridge, TerminalDelivery, TerminalEvent, UiDelivery,
-};
+use crate::terminal_protocol::UiDelivery;
 use crate::theme::TerminalTheme;
 use tao::dpi::{LogicalPosition, PhysicalSize};
 use tao::window::Window;
@@ -19,7 +17,7 @@ const TABS_JS: &str = include_str!("../assets/terminal/tabs.js");
 const TABS_CSS: &str = include_str!("../assets/terminal/tabs.css");
 
 pub fn terminal_html(theme: &TerminalTheme) -> String {
-    render_html(theme, &theme.config_json())
+    workspace_html(theme, &crate::config::Config::default())
 }
 
 pub fn workspace_html(theme: &TerminalTheme, config: &crate::config::Config) -> String {
@@ -48,83 +46,28 @@ fn navigation_allowed(url: &str) -> bool {
     url == "about:blank" || url.starts_with("data:text/html")
 }
 
-struct ScriptDelivery {
-    delivery: TerminalDelivery,
-    script: String,
-}
-
-#[derive(Default)]
-struct DeliveryQueue {
-    bridge: TerminalBridge,
-}
-
-impl DeliveryQueue {
-    fn push(&mut self, event: TerminalEvent) {
-        self.bridge.push(event);
-    }
-
-    fn mark_ready(&mut self) {
-        self.bridge.mark_ready();
-    }
-
-    fn take_scripts(&mut self) -> Vec<ScriptDelivery> {
-        self.bridge
-            .take_deliveries()
-            .into_iter()
-            .map(|delivery| ScriptDelivery {
-                script: delivery_script(&delivery),
-                delivery,
-            })
-            .collect()
-    }
-
-    fn restore(&mut self, deliveries: Vec<TerminalDelivery>) {
-        self.bridge.restore_front(deliveries);
-    }
-}
-
 pub struct TerminalView {
     webview: WebView,
-    deliveries: DeliveryQueue,
 }
 
 impl TerminalView {
-    pub fn new<F>(window: &Window, theme: &TerminalTheme, ipc: F) -> Result<Self, String>
+    pub fn new<F>(
+        window: &Window,
+        theme: &TerminalTheme,
+        config: &crate::config::Config,
+        ipc: F,
+    ) -> Result<Self, String>
     where
         F: Fn(String) + 'static,
     {
         let webview = WebViewBuilder::new()
-            .with_html(terminal_html(theme))
+            .with_html(workspace_html(theme, config))
             .with_ipc_handler(move |request| ipc(request.body().clone()))
             .with_navigation_handler(|url| navigation_allowed(&url))
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
             .build(window)
             .map_err(|e| format!("could not create terminal webview: {e}"))?;
-        Ok(TerminalView {
-            webview,
-            deliveries: DeliveryQueue::default(),
-        })
-    }
-
-    pub fn mark_ready(&mut self) {
-        self.deliveries.mark_ready();
-    }
-
-    pub fn queue(&mut self, event: TerminalEvent) {
-        self.deliveries.push(event);
-    }
-
-    pub fn flush(&mut self) -> Result<(), String> {
-        let mut prepared = self.deliveries.take_scripts().into_iter();
-        while let Some(item) = prepared.next() {
-            if let Err(error) = self.webview.evaluate_script(&item.script) {
-                let mut undelivered = vec![item.delivery];
-                undelivered.extend(prepared.map(|remaining| remaining.delivery));
-                self.deliveries.restore(undelivered);
-                return Err(format!("could not update terminal webview: {error}"));
-            }
-        }
-        Ok(())
+        Ok(TerminalView { webview })
     }
 
     pub fn focus(&self) -> Result<(), String> {
@@ -162,7 +105,6 @@ impl TerminalView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::terminal_protocol::TerminalEvent;
     use crate::theme::{Rgb, TerminalTheme};
 
     #[test]
@@ -205,47 +147,9 @@ mod tests {
         assert!(html.contains("id=\"terminal\""));
         assert!(html.contains("height: 100%"));
         assert!(html.contains("window.rake"));
-        for operation in ["writeBase64", "end", "focus"] {
+        for operation in ["apply", "focus"] {
             assert!(html.contains(operation), "missing {operation}");
         }
-    }
-
-    #[test]
-    fn delivery_queue_waits_for_ready_and_drains_once() {
-        let mut queue = DeliveryQueue::default();
-        queue.push(TerminalEvent::Output(b"one".to_vec()));
-        assert!(queue.take_scripts().is_empty());
-
-        queue.mark_ready();
-        assert_eq!(
-            queue
-                .take_scripts()
-                .into_iter()
-                .map(|delivery| delivery.script)
-                .collect::<Vec<_>>(),
-            vec![r#"window.rake.writeBase64("b25l");"#.to_string()]
-        );
-        assert!(queue.take_scripts().is_empty());
-    }
-
-    #[test]
-    fn delivery_queue_coalesces_output_and_preserves_exit_order() {
-        let mut queue = DeliveryQueue::default();
-        queue.mark_ready();
-        queue.push(TerminalEvent::Output(b"a".to_vec()));
-        queue.push(TerminalEvent::Output(b"b".to_vec()));
-        queue.push(TerminalEvent::Exited { code: Some(0) });
-        let scripts: Vec<String> = queue
-            .take_scripts()
-            .into_iter()
-            .map(|delivery| delivery.script)
-            .collect();
-        assert_eq!(scripts.len(), 2);
-        assert_eq!(scripts[0], r#"window.rake.writeBase64("YWI=");"#);
-        assert_eq!(
-            scripts[1],
-            r#"window.rake.end("Process ended with status 0.");"#
-        );
     }
 
     #[test]

@@ -38,6 +38,7 @@ pub struct Tab {
     pub cwd: PathBuf,
     pub name: TabName,
     pub ended: bool,
+    pub failed: bool,
 }
 
 impl Tab {
@@ -95,6 +96,7 @@ impl Tabs {
             cwd,
             name,
             ended: false,
+            failed: false,
         });
         self.active = Some(id);
     }
@@ -180,6 +182,12 @@ impl Tabs {
     pub fn mark_ended(&mut self, id: TabId) {
         if let Some(tab) = self.get_mut(id) {
             tab.ended = true;
+        }
+    }
+
+    pub fn mark_failed(&mut self, id: TabId) {
+        if let Some(tab) = self.get_mut(id) {
+            tab.failed = true;
         }
     }
 }

@@ -19,6 +19,7 @@ pub mod terminal_profile;
 pub mod terminal_protocol;
 pub mod terminal_view;
 pub mod theme;
+pub mod workspace;
 
 use tray_icon::menu::AboutMetadata;
 use tray_icon::menu::Icon as AboutIcon;

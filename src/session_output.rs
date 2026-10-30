@@ -84,7 +84,6 @@ impl SessionOutput {
             }
             TerminalEvent::Exited { code } => self.enqueue(id, TerminalDelivery::Exited { code }),
             TerminalEvent::Failed(text) => self.enqueue(id, TerminalDelivery::Failed(text)),
-            TerminalEvent::Paste(text) => self.enqueue(id, TerminalDelivery::Paste(text)),
         }
     }
 
