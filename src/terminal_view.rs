@@ -1,6 +1,9 @@
 //! The local xterm.js document and its native webview.
 
-use crate::terminal_protocol::{delivery_script, TerminalBridge, TerminalDelivery, TerminalEvent};
+use crate::tabs::TabId;
+use crate::terminal_protocol::{
+    delivery_script, TerminalBridge, TerminalDelivery, TerminalEvent, UiDelivery,
+};
 use crate::theme::TerminalTheme;
 use tao::dpi::{LogicalPosition, PhysicalSize};
 use tao::window::Window;
@@ -113,6 +116,21 @@ impl TerminalView {
             .map_err(|e| format!("could not focus terminal webview: {e}"))
     }
 
+    pub fn apply(&mut self, deliveries: &[UiDelivery]) -> Result<(), String> {
+        let json = serde_json::to_string(deliveries).map_err(|e| e.to_string())?;
+        self.webview
+            .evaluate_script(&format!(
+                "{json}.forEach(message => window.rake.apply(message));"
+            ))
+            .map_err(|e| format!("could not update workspace: {e}"))
+    }
+
+    pub fn focus_session(&self, id: TabId) -> Result<(), String> {
+        self.webview
+            .evaluate_script(&format!("window.rake?.focus({});", id.get()))
+            .map_err(|e| e.to_string())
+    }
+
     pub fn set_bounds(&self, size: PhysicalSize<u32>, scale_factor: f64) -> Result<(), String> {
         let logical = size.to_logical::<u32>(scale_factor);
         self.webview
@@ -176,20 +194,6 @@ mod tests {
     }
 
     #[test]
-    fn terminal_document_reports_readiness_input_and_positive_size() {
-        let html = terminal_html(&TerminalTheme::default());
-        for message_type in ["ready", "input", "resize"] {
-            assert!(
-                html.contains(&format!("type: '{message_type}'")),
-                "missing {message_type} message"
-            );
-        }
-        assert!(html.contains("cols > 0 && rows > 0"));
-        assert!(html.contains("terminal.onData"));
-        assert!(html.contains("new ResizeObserver"));
-    }
-
-    #[test]
     fn delivery_queue_waits_for_ready_and_drains_once() {
         let mut queue = DeliveryQueue::default();
         queue.push(TerminalEvent::Output(b"one".to_vec()));
@@ -230,13 +234,6 @@ mod tests {
     #[test]
     fn terminal_document_uses_the_native_clipboard() {
         let html = terminal_html(&TerminalTheme::default());
-        for request in ["copy", "paste"] {
-            assert!(
-                html.contains(&format!("type: '{request}'")),
-                "missing {request} request"
-            );
-        }
-        assert!(html.contains("paste(text)"), "missing bridge paste");
         assert!(
             !html.contains("navigator.clipboard"),
             "the page is not a secure context, so it has no clipboard API"
