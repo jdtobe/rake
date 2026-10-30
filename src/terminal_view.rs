@@ -15,12 +15,29 @@ const XTERM_JS: &str = include_str!("../assets/terminal/xterm.js");
 const ADDON_FIT_JS: &str = include_str!("../assets/terminal/addon-fit.js");
 const ADDON_WEBGL_JS: &str = include_str!("../assets/terminal/addon-webgl.js");
 const RAKE_JS: &str = include_str!("../assets/terminal/rake.js");
+const TABS_JS: &str = include_str!("../assets/terminal/tabs.js");
+const TABS_CSS: &str = include_str!("../assets/terminal/tabs.css");
 
 pub fn terminal_html(theme: &TerminalTheme) -> String {
-    let rake_js = RAKE_JS.replace("/*__RAKE_CONFIG__*/", &theme.config_json());
+    render_html(theme, &theme.config_json())
+}
+
+pub fn workspace_html(theme: &TerminalTheme, config: &crate::config::Config) -> String {
+    let mut settings: serde_json::Value =
+        serde_json::from_str(&theme.config_json()).expect("terminal theme JSON");
+    settings["workspace"] = true.into();
+    settings["tab_position"] = serde_json::to_value(config.tab_position).unwrap();
+    settings["appearance"] = serde_json::to_value(config.appearance).unwrap();
+    render_html(theme, &settings.to_string())
+}
+
+fn render_html(theme: &TerminalTheme, settings: &str) -> String {
+    let rake_js = RAKE_JS.replace("/*__RAKE_CONFIG__*/", settings);
     INDEX_HTML
         .replace("/*__THEME_BACKGROUND__*/", &theme.background.hex())
         .replace("/*__XTERM_CSS__*/", XTERM_CSS)
+        .replace("/*__TABS_JS__*/", TABS_JS)
+        .replace("/*__TABS_CSS__*/", TABS_CSS)
         .replace("/*__XTERM_JS__*/", XTERM_JS)
         .replace("/*__ADDON_FIT_JS__*/", ADDON_FIT_JS)
         .replace("/*__ADDON_WEBGL_JS__*/", ADDON_WEBGL_JS)
