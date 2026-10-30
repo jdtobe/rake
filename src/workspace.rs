@@ -48,6 +48,7 @@ pub struct Workspace {
     notices: Vec<String>,
     effects: Vec<WorkspaceEffect>,
     output_batch: Vec<crate::session_output::SessionDelivery>,
+    preserve_saved: bool,
 }
 
 impl Workspace {
@@ -69,6 +70,7 @@ impl Workspace {
             notices: vec![],
             effects: vec![],
             output_batch: vec![],
+            preserve_saved: false,
         }
     }
     pub fn confirmation_pending(&self) -> bool {
@@ -126,6 +128,9 @@ impl Workspace {
         }]);
     }
     fn save(&mut self, fresh: bool) {
+        if self.preserve_saved {
+            return;
+        }
         let observations = if fresh {
             self.tabs
                 .ordered()
@@ -196,6 +201,7 @@ impl Workspace {
                 .unwrap_or_else(|| self.home.clone())
         };
         if self.spawn_tab(cwd, Default::default()).is_some() {
+            self.preserve_saved = false;
             self.save(false);
         }
     }
@@ -239,6 +245,7 @@ impl Workspace {
             CloseDecision::Proceed {
                 intent: CloseIntent::Tab(id),
             } => {
+                self.preserve_saved = false;
                 let cwd = self
                     .sessions
                     .observe(id)
@@ -365,6 +372,7 @@ impl Workspace {
                     self.notice(text);
                 }
                 let mut successes = vec![];
+                let attempted = layout.tabs.len();
                 for (index, tab) in layout.tabs.into_iter().enumerate() {
                     if let Some(id) = self.spawn_tab(tab.cwd, tab.name) {
                         successes.push((index, id));
@@ -378,6 +386,7 @@ impl Workspace {
                     self.ui(vec![UiDelivery::SelectTab { id: *id }]);
                 }
                 self.metadata();
+                self.preserve_saved = successes.len() != attempted;
                 self.save(false);
             }
             WorkspaceCommand::Ui(WorkspaceRequest::Ready {}) => {
@@ -451,6 +460,7 @@ impl Workspace {
                 WorkspaceRequest::CloseTab { id } => self.request_close(CloseIntent::Tab(id)),
                 WorkspaceRequest::RenameTab { id, text } => {
                     if self.tabs.get(id).is_some() {
+                        self.preserve_saved = false;
                         self.tabs.rename(id, &text);
                         self.metadata();
                         self.save(false);
@@ -509,13 +519,15 @@ mod tests {
     }
     impl Harness {
         fn new(config: Config, start: bool) -> Self {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let dir = std::env::temp_dir().join(format!(
-                "rake-workspace-{}-{}",
+                "rake-workspace-{}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos()
+                    .as_nanos(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             ));
             std::fs::create_dir_all(&dir).unwrap();
             let mut w = Workspace::new(
@@ -865,6 +877,41 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, WorkspaceEffect::Confirm { .. })),
             "failed output is not proof the app died"
+        );
+    }
+
+    #[test]
+    fn failed_startup_does_not_overwrite_recoverable_layout() {
+        let mut h = Harness::new(
+            Config {
+                startup_tabs: StartupTabs::Restore,
+                ..Default::default()
+            },
+            false,
+        );
+        let saved = SavedLayout {
+            version: 1,
+            selected: 0,
+            tabs: vec![SavedTab {
+                cwd: "/private".into(),
+                name: TabName {
+                    manual: Some("keep me".into()),
+                    automatic: None,
+                },
+            }],
+        };
+        let path = h.dir.join("tabs.json");
+        tab_layout::save_atomic(&path, &saved).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        h.w.shell.program = "/missing/shell".into();
+        h.w.handle(WorkspaceCommand::Start);
+        assert!(h.w.tabs.ordered().is_empty());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        h.w.handle(WorkspaceCommand::Native(AppCommand::Quit));
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "quitting a failed startup must preserve layout too"
         );
     }
 }
